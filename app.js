@@ -47,6 +47,8 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtTanggal(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00"); return `${d.getDate()} ${BULAN_FULL[d.getMonth()]} ${d.getFullYear()}`; }
 function selisihHari(iso) { const t = new Date(); t.setHours(0,0,0,0); const d = new Date(iso + "T00:00"); return Math.round((d - t) / 86400000); }
+function lewatTenggat(t) { return !!(t.deadline && selisihHari(t.deadline) < 0); }
+function tugasSelesai(t) { return !!(t.mine && t.mine.selesai) || lewatTenggat(t); }
 function labelDeadline(iso) {
   if (!iso) return { txt: "Tanpa tenggat", urgent: false };
   const s = selisihHari(iso);
@@ -218,9 +220,9 @@ function updateChrome() {
       const sub = store.tugas.reduce((n,t)=>n+((t.progres&&t.progres.submitted)||0),0);
       sb.innerHTML = statHTML(total,"Total Tugas") + statHTML(tgt,"Tenggat ≤7h",true) + statHTML(sub,"Terkumpul");
     } else {
-      const aktif = store.tugas.filter(t => !(t.mine&&t.mine.selesai)).length;
-      const tgt = store.tugas.filter(t => t.deadline && selisihHari(t.deadline)>=0 && selisihHari(t.deadline)<=7 && !(t.mine&&t.mine.selesai)).length;
-      const selesai = store.tugas.filter(t => t.mine&&t.mine.selesai).length;
+      const aktif = store.tugas.filter(t => !tugasSelesai(t)).length;
+      const tgt = store.tugas.filter(t => t.deadline && selisihHari(t.deadline)>=0 && selisihHari(t.deadline)<=7 && !tugasSelesai(t)).length;
+      const selesai = store.tugas.filter(t => tugasSelesai(t)).length;
       sb.innerHTML = statHTML(aktif,"Aktif") + statHTML(tgt,"Tenggat ≤7h",true) + statHTML(selesai,"Selesai");
     }
   }
@@ -342,8 +344,8 @@ function renderKalender() {
 function renderTugas() {
   let list = [...store.tugas];
   if (!isManager()) {
-    if (tugasFilter === "aktif") list = list.filter(t => !(t.mine && t.mine.selesai));
-    else if (tugasFilter === "selesai") list = list.filter(t => t.mine && t.mine.selesai);
+    if (tugasFilter === "aktif") list = list.filter(t => !tugasSelesai(t));
+    else if (tugasFilter === "selesai") list = list.filter(t => tugasSelesai(t));
   }
   list.sort((a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999"));
   if (!list.length) return emptyHTML("✔️", isManager() ? "Belum ada tugas. Tekan + untuk menambah." : "Tidak ada tugas pada filter ini.");
@@ -351,7 +353,8 @@ function renderTugas() {
 }
 function taskHTML(t) {
   const dl = labelDeadline(t.deadline);
-  const done = t.mine && t.mine.selesai;
+  const done = tugasSelesai(t);
+  const lewat = lewatTenggat(t) && !(t.mine && t.mine.selesai);
   const pr = t.prioritas || "sedang";
   const tipeBadge = `<span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>`;
   const jkLabel = { submit:"Submit", presentasi:"Presentasi", keduanya:"Submit + Presentasi" }[t.jenisKumpul||"submit"];
@@ -368,7 +371,8 @@ function taskHTML(t) {
       <div id="sub-${t.id}">${expandedTugas.has(t.id)?subListHTML(t.id):""}</div>`;
   } else {
     const file = t.mine && t.mine.fileOrig ? `<a class="file-link" data-file="${esc(t.mine.fileName)}" data-orig="${esc(t.mine.fileOrig)}" href="#">⬇ ${esc(t.mine.fileOrig)}</a>` : "";
-    extra = `<div class="mine-status ${done?"ok":""}">${done?"✔ Selesai"+(t.mine.fileOrig?" • berkas terkumpul":""):"○ Belum selesai"} ${file}</div>
+    const statusTxt = done ? (lewat ? "✔ Selesai • tenggat lewat" : "✔ Selesai"+((t.mine&&t.mine.fileOrig)?" • berkas terkumpul":"")) : "○ Belum selesai";
+    extra = `<div class="mine-status ${done?"ok":""}">${statusTxt} ${file}</div>
       <div class="task-actions" style="margin-top:8px"><button class="btn sm gold" data-submit="${t.id}">${perluBerkas?"⬆ "+(t.mine&&t.mine.selesai?"Perbarui":"Kumpulkan"):(t.mine&&t.mine.selesai?"✎ Perbarui":"✓ Tandai Selesai")}</button></div>`;
   }
   return `<div class="task-item p-${pr} ${done?"done":""}">
