@@ -276,8 +276,13 @@ function cardHTML(e) {
     const tP = store.tugas.filter(t => t.pertemuanId === e.id);
     if (!isManager()) {
       const pres = tP.some(t => (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya") && (t.anggota || []).some(a => a.id === me.id));
+      const myTasks = tP.filter(t => {
+        const jk = t.jenisKumpul || "submit";
+        const relevan = jk === "presentasi" ? (t.anggota || []).some(a => a.id === me.id) : true;
+        return relevan && !tugasSelesai(t);
+      });
       if (pres) flags += `<span class="flag pres">🎤 Giliran Presentasi</span>`;
-      if (tP.length) flags += `<span class="flag tugas">📌 Ada Tugas</span>`;
+      if (myTasks.length) flags += `<span class="flag tugas">📌 Ada Tugas</span>`;
     } else if (tP.length) {
       flags += `<span class="flag tugas">📌 ${tP.length} Tugas</span>`;
     }
