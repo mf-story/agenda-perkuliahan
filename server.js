@@ -423,6 +423,14 @@ const server = http.createServer(async (req, res) => {
         const tugasId = id;
         const tugas = DB.tugas.find(t => t.id === tugasId);
         if (!tugas) return sendJSON(res, 404, { error: "Tugas tidak ditemukan" });
+        // Tandai selesai hanya boleh setelah jam pertemuan dimulai (zona WITA/UTC+8).
+        if (body.selesai === true && tugas.pertemuanId) {
+          const p = DB.pertemuan.find(x => x.id === tugas.pertemuanId);
+          if (p && p.tanggal) {
+            const start = Date.parse(p.tanggal + "T" + (p.waktu || "00:00") + ":00+08:00");
+            if (!isNaN(start) && Date.now() < start) return sendJSON(res, 400, { error: "Belum dapat ditandai selesai — pertemuan belum dimulai." });
+          }
+        }
         let sub = DB.submissions.find(sb => sb.tugasId === tugasId && sb.studentId === me.id);
         if (!sub) { sub = { id: uid(), tugasId, studentId: me.id, selesai: false, fileName: null, fileOrig: null, catatan: "", submittedAt: null }; DB.submissions.push(sub); }
         if (typeof body.selesai === "boolean") sub.selesai = body.selesai;

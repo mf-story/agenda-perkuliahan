@@ -49,6 +49,16 @@ function fmtTanggal(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00
 function selisihHari(iso) { const t = new Date(); t.setHours(0,0,0,0); const d = new Date(iso + "T00:00"); return Math.round((d - t) / 86400000); }
 function lewatTenggat(t) { return !!(t.deadline && selisihHari(t.deadline) < 0); }
 function tugasSelesai(t) { return !!t.selesai || !!(t.mine && t.mine.selesai) || lewatTenggat(t); }
+// Jam mulai pertemuan terkait (zona WITA/UTC+8) agar konsisten device & server.
+function pertemuanStartMs(t) {
+  if (!t.pertemuanId) return null;
+  const p = store.pertemuan.find(x => x.id === t.pertemuanId);
+  if (!p || !p.tanggal) return null;
+  const ms = Date.parse(p.tanggal + "T" + (p.waktu || "00:00") + ":00+08:00");
+  return isNaN(ms) ? null : ms;
+}
+function bolehTandai(t) { const s = pertemuanStartMs(t); return s == null ? true : Date.now() >= s; }
+function startLabelTugas(t) { const p = t.pertemuanId && store.pertemuan.find(x => x.id === t.pertemuanId); return (p && p.tanggal) ? ` (${fmtTanggal(p.tanggal)}${p.waktu ? " · " + p.waktu : ""})` : ""; }
 function labelDeadline(iso) {
   if (!iso) return { txt: "Tanpa tenggat", urgent: false };
   const s = selisihHari(iso);
@@ -369,6 +379,7 @@ function taskHTML(t) {
   const done = tugasSelesai(t);
   const lewat = lewatTenggat(t) && !(t.mine && t.mine.selesai);
   const pr = t.prioritas || "sedang";
+  const canMark = bolehTandai(t);
   const tipeBadge = `<span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>`;
   const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
   const jkBadge = isPres ? `<span class="tag blue">Presentasi</span>` : "";
@@ -385,12 +396,14 @@ function taskHTML(t) {
       <div id="sub-${t.id}">${expandedTugas.has(t.id)?subListHTML(t.id):""}</div>`;
   } else {
     const mineDone = !!(t.mine && t.mine.selesai);
+    const terkunci = !canMark && !mineDone;
     const statusTxt = done ? (lewat ? "✔ Selesai • tenggat lewat" : "✔ Selesai") : "○ Belum selesai";
     extra = `<div class="mine-status ${done?"ok":""}">${statusTxt}</div>
-      <div class="task-actions" style="margin-top:8px"><button class="btn sm ${mineDone?"ghost":"gold"}" data-toggle="${t.id}">${mineDone?"↺ Batalkan":"✓ Tandai Selesai"}</button></div>`;
+      ${terkunci?`<div class="task-meta"><span>⏳ Bisa ditandai saat pertemuan dimulai${startLabelTugas(t)}</span></div>`:""}
+      <div class="task-actions" style="margin-top:8px"><button class="btn sm ${mineDone?"ghost":"gold"}" data-toggle="${t.id}" ${terkunci?"disabled":""}>${mineDone?"↺ Batalkan":"✓ Tandai Selesai"}</button></div>`;
   }
   return `<div class="task-item p-${pr} ${done?"done":""}">
-    ${isManager()?`<span class="task-check" style="cursor:default;background:#f1f5fb;color:var(--navy)">${(t.progres&&t.progres.done)||0}</span>`:`<button class="task-check" data-toggle="${t.id}">✓</button>`}
+    ${isManager()?`<span class="task-check" style="cursor:default;background:#f1f5fb;color:var(--navy)">${(t.progres&&t.progres.done)||0}</span>`:`<button class="task-check" data-toggle="${t.id}" ${(!canMark && !(t.mine&&t.mine.selesai))?"disabled":""}>✓</button>`}
     <div class="task-body"><div class="task-title">${esc(t.judul)}</div>
       <div class="task-meta"><span class="tag mk">${esc(t.matkul||"Umum")}</span>${tipeBadge}${jkBadge}
         <span class="due ${dl.urgent&&!done?"urgent":""}">🕑 ${t.deadline?fmtTanggal(t.deadline)+" • ":""}${dl.txt}</span></div>

@@ -287,6 +287,7 @@ body {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 8px 18px rgba(15,42,74,.22);
 }
 .btn:hover { transform: translateY(-1px); filter: brightness(1.04); }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; filter: none; transform: none; box-shadow: none; }
 .btn.gold { background: var(--grad-gold); color: var(--navy); }
 .btn.ghost { background: #f1f5fb; color: var(--muted); box-shadow: none; flex: 0 0 auto; }
 .btn.ghost:hover { color: var(--navy); }
@@ -320,6 +321,7 @@ body {
   flex: 0 0 auto; margin-top: 2px; display: grid; place-items: center; color: transparent; font-size: .8rem; font-weight: 700;
 }
 .task-check:hover { border-color: var(--green); }
+.task-check:disabled { opacity: .45; cursor: not-allowed; border-color: var(--line); }
 .task-item.done .task-check { background: var(--green); border-color: var(--green); color: #fff; }
 .task-body { flex: 1; min-width: 0; }
 .task-title { font-weight: 700; font-size: .96rem; color: var(--navy); }
