@@ -355,6 +355,13 @@ const server = http.createServer(async (req, res) => {
 
     // ---------- TUGAS (dosen buat; semua baca) ----------
     if (resource === "tugas") {
+      // Toggle status selesai tingkat-tugas (dosen/admin): PUT /api/tugas/:id/selesai
+      if (parts[3] === "selesai") {
+        if (!isManager) return sendJSON(res, 403, { error: "Hanya dosen/admin yang dapat menandai tugas selesai" });
+        const t = DB.tugas.find(x => x.id === id);
+        if (!t) return sendJSON(res, 404, { error: "Tidak ditemukan" });
+        if (method === "PUT") { t.selesai = !!body.selesai; saveDB(); return sendJSON(res, 200, t); }
+      }
       if (method === "GET") {
         let list = DB.tugas;
         if (!isManager) list = list.filter(t => enrolled(me.id, t.matkul));

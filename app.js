@@ -48,7 +48,7 @@ function isoToday() { return new Date().toISOString().slice(0, 10); }
 function fmtTanggal(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00"); return `${d.getDate()} ${BULAN_FULL[d.getMonth()]} ${d.getFullYear()}`; }
 function selisihHari(iso) { const t = new Date(); t.setHours(0,0,0,0); const d = new Date(iso + "T00:00"); return Math.round((d - t) / 86400000); }
 function lewatTenggat(t) { return !!(t.deadline && selisihHari(t.deadline) < 0); }
-function tugasSelesai(t) { return !!(t.mine && t.mine.selesai) || lewatTenggat(t); }
+function tugasSelesai(t) { return !!t.selesai || !!(t.mine && t.mine.selesai) || lewatTenggat(t); }
 function labelDeadline(iso) {
   if (!iso) return { txt: "Tanpa tenggat", urgent: false };
   const s = selisihHari(iso);
@@ -276,13 +276,12 @@ function cardHTML(e) {
     const tP = store.tugas.filter(t => t.pertemuanId === e.id);
     if (!isManager()) {
       const pres = tP.some(t => (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya") && (t.anggota || []).some(a => a.id === me.id));
-      const myTasks = tP.filter(t => {
-        const jk = t.jenisKumpul || "submit";
-        const relevan = jk === "presentasi" ? (t.anggota || []).some(a => a.id === me.id) : true;
-        return relevan && !tugasSelesai(t);
-      });
+      const myTasks = tP.filter(t => (t.jenisKumpul || "submit") !== "presentasi" && !tugasSelesai(t));
+      const adaIndividu = myTasks.some(t => (t.tipe || "individu") === "individu");
+      const adaKelompok = myTasks.some(t => t.tipe === "kelompok");
       if (pres) flags += `<span class="flag pres">🎤 Giliran Presentasi</span>`;
-      if (myTasks.length) flags += `<span class="flag tugas">📌 Ada Tugas</span>`;
+      if (adaIndividu) flags += `<span class="flag tugas">📌 Tugas Individu</span>`;
+      if (adaKelompok) flags += `<span class="flag tugas">📌 Tugas Kelompok</span>`;
     } else if (tP.length) {
       flags += `<span class="flag tugas">📌 ${tP.length} Tugas</span>`;
     }
@@ -370,8 +369,10 @@ function taskHTML(t) {
   if (isManager()) {
     const p = t.progres || { done:0,total:0,submitted:0 };
     const pct = p.total ? Math.round(p.done/p.total*100) : 0;
+    const tDone = !!t.selesai;
     extra = `<div class="progress"><div class="progress-bar"><span style="width:${pct}%"></span></div>
       <div class="progress-meta">${p.done}/${p.total} mahasiswa selesai • ${p.submitted} mengumpulkan</div></div>
+      <div class="task-actions" style="margin-top:8px"><button class="btn sm ${tDone?"ghost":"gold"}" data-tdone="${t.id}">${tDone?"↺ Aktifkan kembali":"✓ Tandai Selesai"}</button></div>
       <button class="expand-btn" data-expand="${t.id}">${expandedTugas.has(t.id)?"▴ Sembunyikan":"▾ Lihat pengumpulan"}</button>
       <div id="sub-${t.id}">${expandedTugas.has(t.id)?subListHTML(t.id):""}</div>`;
   } else {
@@ -486,6 +487,7 @@ function bindView() {
   c.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openForm(b.dataset.edit, b.dataset.id));
   c.querySelectorAll("[data-del]").forEach(b => b.onclick = () => hapus(b.dataset.del, b.dataset.id));
   c.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => toggleTugas(b.dataset.toggle));
+  c.querySelectorAll("[data-tdone]").forEach(b => b.onclick = () => toggleTugasDone(b.dataset.tdone));
   c.querySelectorAll("[data-submit]").forEach(b => b.onclick = () => openSubmit(b.dataset.submit));
   c.querySelectorAll("[data-expand]").forEach(b => b.onclick = () => toggleExpand(b.dataset.expand));
   c.querySelectorAll("[data-file]").forEach(b => b.onclick = (e) => { e.preventDefault(); downloadFile(b.dataset.file, b.dataset.orig); });
@@ -512,6 +514,11 @@ async function downloadFile(fn, orig) {
 async function toggleTugas(id) {
   const t = store.tugas.find(x => x.id === id); const next = !(t.mine && t.mine.selesai);
   try { await api("/submissions/"+id, "POST", { selesai: next }); await reload("tugas"); updateChrome(); render(); toast(next?"Ditandai selesai ✓":"Diaktifkan kembali"); }
+  catch (e) { toast(e.message); }
+}
+async function toggleTugasDone(id) {
+  const t = store.tugas.find(x => x.id === id); const next = !t.selesai;
+  try { await api("/tugas/"+id+"/selesai", "PUT", { selesai: next }); await reload("tugas"); updateChrome(); render(); loadNotif(); toast(next?"Tugas ditandai selesai ✓":"Tugas diaktifkan kembali"); }
   catch (e) { toast(e.message); }
 }
 async function hapus(tipe, id) {
