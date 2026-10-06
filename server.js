@@ -227,6 +227,7 @@ const server = http.createServer(async (req, res) => {
     // ---- Authenticated below ----
     const me = authUser(req);
     if (!me) return sendJSON(res, 401, { error: "Tidak terautentikasi" });
+    me.lastSeen = Date.now(); // presensi (in-memory, tak perlu disimpan ke disk)
     const isDosen = me.role === "dosen";
     const isManager = me.role === "dosen" || me.role === "admin";
     const isAdmin = me.role === "admin";
@@ -235,6 +236,14 @@ const server = http.createServer(async (req, res) => {
       // Perbarui token (sliding) agar tetap login selama dipakai, sampai logout manual.
       const token = signToken({ uid: me.id, role: me.role, exp: Date.now() + 3650 * 864e5 });
       return sendJSON(res, 200, { user: publicUser(me), token });
+    }
+
+    // Pengguna yang sedang online (aktif ≤70 detik).
+    if (pathname === "/api/online" && method === "GET") {
+      const now = Date.now();
+      const list = DB.users.filter(u => u.lastSeen && now - u.lastSeen < 70000)
+        .map(u => ({ id: u.id, nama: u.nama, role: u.role }));
+      return sendJSON(res, 200, list);
     }
 
     // Daftar mahasiswa (untuk enroll / anggota kelompok) — semua pengguna login

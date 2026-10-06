@@ -206,6 +206,7 @@ async function pollUpdates() {
     }
     if (newest) lastChatTs = Math.max(lastChatTs, newest);
   } catch {}
+  try { store._online = await api("/online"); if (currentView === "chat") renderOnline(); } catch {}
   checkScheduleReminders();
 }
 function timeAgo(ts) {
@@ -546,6 +547,7 @@ function renderChat() {
   return `<div class="chat-wrap">
     <div class="chat-head"><div><h2>Obrolan Kelas</h2><div class="sub">${msgs.length} pesan • Kelas 26 B</div></div>
       <button class="round-btn" id="chatReload" title="Muat ulang">⟳</button></div>
+    <div class="chat-online" id="chatOnline" hidden></div>
     <div class="chat-list" id="chatList">${list}</div>
     <form class="chat-composer" id="chatForm" autocomplete="off">
       <input class="chat-input" id="chatInput" placeholder="Tulis pesan…" maxlength="2000" />
@@ -573,7 +575,16 @@ function chatTime(ts) {
 }
 async function loadChat() {
   try { store.chat = await api("/chat"); } catch (e) {}
-  if (currentView === "chat") updateChatList();
+  try { store._online = await api("/online"); } catch (e) {}
+  if (currentView === "chat") { updateChatList(); renderOnline(); }
+}
+function renderOnline() {
+  const el = document.getElementById("chatOnline"); if (!el) return;
+  const list = store._online || [];
+  if (!list.length) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  const names = list.map(u => `<span class="co-chip">${esc(u.id === me.id ? "Anda" : u.nama)}</span>`).join("");
+  el.innerHTML = `<span class="co-dot"></span><b>${list.length} online</b> ${names}`;
 }
 function updateChatList() {
   const el = document.getElementById("chatList"); if (!el) return;
