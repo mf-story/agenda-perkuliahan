@@ -220,7 +220,7 @@ const server = http.createServer(async (req, res) => {
       const user = DB.users.find(u => u.username.toLowerCase() === String(b.username || "").toLowerCase().trim());
       if (!user || !verifyPassword(String(b.password || ""), user.password))
         return sendJSON(res, 401, { error: "Username atau password salah" });
-      const token = signToken({ uid: user.id, role: user.role, exp: Date.now() + 30 * 864e5 });
+      const token = signToken({ uid: user.id, role: user.role, exp: Date.now() + 3650 * 864e5 });
       return sendJSON(res, 200, { token, user: publicUser(user) });
     }
     // ---- Authenticated below ----
@@ -230,7 +230,11 @@ const server = http.createServer(async (req, res) => {
     const isManager = me.role === "dosen" || me.role === "admin";
     const isAdmin = me.role === "admin";
 
-    if (pathname === "/api/me" && method === "GET") return sendJSON(res, 200, { user: publicUser(me) });
+    if (pathname === "/api/me" && method === "GET") {
+      // Perbarui token (sliding) agar tetap login selama dipakai, sampai logout manual.
+      const token = signToken({ uid: me.id, role: me.role, exp: Date.now() + 3650 * 864e5 });
+      return sendJSON(res, 200, { user: publicUser(me), token });
+    }
 
     // Daftar mahasiswa (untuk enroll / anggota kelompok) — semua pengguna login
     if (pathname === "/api/mahasiswa" && method === "GET") {

@@ -93,7 +93,7 @@ function showLogin() { document.getElementById("loginScreen").hidden = false; do
 function showApp() { document.getElementById("loginScreen").hidden = true; document.getElementById("app").hidden = false; }
 
 async function boot() {
-  if (token) { try { me = (await api("/me")).user; return afterLogin(); } catch { token = null; localStorage.removeItem(TOKEN_KEY); } }
+  if (token) { try { const r = await api("/me"); me = r.user; if (r.token) { token = r.token; localStorage.setItem(TOKEN_KEY, token); } return afterLogin(); } catch { token = null; localStorage.removeItem(TOKEN_KEY); } }
   showLogin();
 }
 async function afterLogin() {
