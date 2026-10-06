@@ -16,6 +16,7 @@ const TABS = ["agenda", "kalender", "tugas", "chat"];
 let agendaTime = "pekan";                // pekan|hari|lampau|semua
 let agendaType = "semua";                // semua|pertemuan|kegiatan
 let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
+let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
 const store = { matkul: [], jadwal: [], tugas: [], agenda: [], catatan: [], users: [], pertemuan: [], kelompok: [], mahasiswa: [], chat: [] };
@@ -301,13 +302,14 @@ function updateChrome() {
   const fab = document.getElementById("fab");
   fab.hidden = isSecondary || currentView === "chat"; // tak ada tambah di chat
 
-  // filter mata kuliah (hanya tab Agenda)
+  // filter mata kuliah (tab Agenda & Tugas)
   const mkFilter = document.getElementById("mkFilter");
-  if (onAgenda) {
+  if (onAgenda || onTugas) {
+    const cur = onAgenda ? agendaMatkul : tugasMatkul;
     mkFilter.hidden = false;
     mkFilter.innerHTML = `<option value="">📚 Semua Mata Kuliah</option>` +
-      myMatkul().map(m => `<option value="${esc(m.nama)}" ${agendaMatkul===m.nama?"selected":""}>${esc(m.nama)}</option>`).join("");
-    mkFilter.onchange = () => { agendaMatkul = mkFilter.value; updateChrome(); render(); };
+      myMatkul().map(m => `<option value="${esc(m.nama)}" ${cur===m.nama?"selected":""}>${esc(m.nama)}</option>`).join("");
+    mkFilter.onchange = () => { if (currentView === "agenda") agendaMatkul = mkFilter.value; else tugasMatkul = mkFilter.value; updateChrome(); render(); };
   } else mkFilter.hidden = true;
 
   // chips
@@ -475,12 +477,13 @@ function renderKalender() {
    ============================================================ */
 function renderTugas() {
   let list = [...store.tugas];
+  if (tugasMatkul) list = list.filter(t => (t.matkul || "") === tugasMatkul);
   if (!isManager()) {
     if (tugasFilter === "aktif") list = list.filter(t => !tugasSelesai(t));
     else if (tugasFilter === "selesai") list = list.filter(t => tugasSelesai(t));
   }
   list.sort((a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999"));
-  if (!list.length) return emptyHTML("✔️", isManager() ? "Belum ada tugas. Tekan + untuk menambah." : "Tidak ada tugas pada filter ini.");
+  if (!list.length) return emptyHTML("✔️", isManager() ? "Belum ada tugas pada filter ini." : "Tidak ada tugas pada filter ini.");
   return list.map(taskHTML).join("");
 }
 function taskHTML(t) {
