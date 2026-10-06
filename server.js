@@ -413,13 +413,12 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 200, out);
       }
       const shape = () => ({ judul: s(body.judul), matkul: s(body.matkul), deadline: s(body.deadline), prioritas: ["tinggi", "sedang", "rendah"].includes(body.prioritas) ? body.prioritas : "sedang", deskripsi: s(body.deskripsi), tipe: body.tipe === "kelompok" ? "kelompok" : "individu", jenisKumpul: ["submit", "presentasi", "keduanya"].includes(body.jenisKumpul) ? body.jenisKumpul : "submit", pertemuanId: s(body.pertemuanId), anggota: Array.isArray(body.anggota) ? body.anggota.filter(a => a && a.id).map(a => ({ id: String(a.id), nama: String(a.nama || "") })) : [] });
-      // Semua pengguna boleh membuat tugas; edit/hapus hanya pembuat atau dosen/admin.
+      // Semua pengguna boleh membuat & MENGEDIT tugas; hapus hanya pembuat atau dosen/admin.
       if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); saveDB(); return sendJSON(res, 201, it); }
       const ti = DB.tugas.findIndex(x => x.id === id);
       if (ti < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
-      if (!isManager && DB.tugas[ti].createdBy !== me.id) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin yang dapat mengubah tugas ini" });
       if (method === "PUT") { DB.tugas[ti] = { ...DB.tugas[ti], ...shape() }; saveDB(); return sendJSON(res, 200, DB.tugas[ti]); }
-      if (method === "DELETE") { DB.tugas = DB.tugas.filter(x => x.id !== id); DB.submissions = DB.submissions.filter(sb => sb.tugasId !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
+      if (method === "DELETE") { if (!isManager && DB.tugas[ti].createdBy !== me.id) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin yang dapat menghapus tugas ini" }); DB.tugas = DB.tugas.filter(x => x.id !== id); DB.submissions = DB.submissions.filter(sb => sb.tugasId !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
     }
 
     // ---------- SUBMISSIONS (mahasiswa kumpul / tandai selesai) ----------

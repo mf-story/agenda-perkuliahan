@@ -497,7 +497,7 @@ function taskHTML(t) {
   const tipeBadge = `<span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>`;
   const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
   const jkBadge = isPres ? `<span class="tag blue">Presentasi</span>` : "";
-  const canEdit = isManager() || (me && t.createdBy === me.id);
+  const canDel = isManager() || (me && t.createdBy === me.id);
   let extra = "";
   if (isManager()) {
     const p = t.progres || { done:0,total:0,submitted:0 };
@@ -525,7 +525,7 @@ function taskHTML(t) {
       ${t.anggota && t.anggota.length ? `<div class="task-meta"><span>${(t.jenisKumpul==="presentasi"||t.jenisKumpul==="keduanya")?"🎤 Presentasi":"👥 Anggota"} (${t.anggota.length}): ${t.anggota.map(a=>esc(a.nama)).join(", ")}</span></div>` : ""}
       ${!isManager() && t.createdByNama ? `<div class="task-meta"><span>✍ Dibuat oleh: ${esc(t.createdByNama)}</span></div>` : ""}
       ${extra}</div>
-    ${canEdit?`<div class="task-actions"><button class="btn-icon" data-edit="tugas" data-id="${t.id}">✎</button><button class="btn-icon danger" data-del="tugas" data-id="${t.id}">🗑</button></div>`:""}
+    ${me?`<div class="task-actions"><button class="btn-icon" data-edit="tugas" data-id="${t.id}">✎</button>${canDel?`<button class="btn-icon danger" data-del="tugas" data-id="${t.id}">🗑</button>`:""}</div>`:""}
   </div>`;
 }
 function subListHTML(id) {
@@ -764,7 +764,7 @@ function openDetail(kind, id) {
         <div class="dtask">${tugasP.length?tugasP.map(t=>{
           const isPres = t.jenisKumpul==="presentasi" || t.jenisKumpul==="keduanya";
           const presenters = isPres && t.anggota && t.anggota.length ? `<div class="dtask-pres">🎤 Presentasi: ${t.anggota.map(a=>esc(a.nama)).join(", ")}</div>` : "";
-          const canT = isManager() || (me && t.createdBy === me.id);
+          const canT = !!me;
           return `<div class="dtask-row"><div class="dtask-main"><div class="t">${esc(t.judul)}</div>${presenters}</div>
             <div class="dtask-badges"><span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>${isPres?`<span class="tag blue">Presentasi</span>`:""}${canT?`<button class="btn-icon" data-tedit="${t.id}" title="Edit tugas">✎</button>`:""}</div></div>`;
         }).join(""):'<div class="dtask-empty">Belum ada tugas untuk pertemuan ini.</div>'}</div>
