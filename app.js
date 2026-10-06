@@ -434,9 +434,9 @@ function cardHTML(e) {
 function eventsByDate() {
   const map = {};
   const add = (iso, item) => { if (!iso) return; (map[iso] = map[iso] || []).push(item); };
-  store.pertemuan.forEach(p => add(p.tanggal, { t: "pertemuan", title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai) }));
-  store.agenda.forEach(a => add(a.tanggal, { t: "kegiatan", title: a.judul, time: a.waktu }));
-  store.tugas.forEach(t => add(t.deadline, { t: "tugas", title: "Tenggat: " + t.judul, time: "" }));
+  store.pertemuan.forEach(p => add(p.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai) }));
+  store.agenda.forEach(a => add(a.tanggal, { t: "kegiatan", id: a.id, title: a.judul, time: a.waktu }));
+  store.tugas.forEach(t => add(t.deadline, { t: "tugas", id: t.id, title: "Tenggat: " + t.judul, time: "" }));
   return map;
 }
 function renderKalender() {
@@ -458,7 +458,7 @@ function renderKalender() {
   let panel = "";
   if (calSel && map[calSel]) {
     panel = `<div class="day-panel"><h3>${fmtTanggal(calSel)}</h3>${map[calSel].map(it => `
-      <div class="mcard k-${it.t==="tugas"?"kegiatan":it.t}"><div class="mcard-head"><div class="mcard-title">${esc(it.title)}</div></div>
+      <div class="mcard k-${it.t==="tugas"?"kegiatan":it.t}" ${it.t==="tugas"?`data-goto="tugas"`:`data-detail="${it.t}:${it.id}"`}><div class="mcard-head"><div class="mcard-title">${esc(it.title)}</div></div>
       <div class="mcard-meta"><span class="mi"><span class="tag ${it.t==="pertemuan"?"blue":it.t==="tugas"?"gold":"cat"}">${it.t}</span></span>${it.time?`<span class="mi">🕑 ${esc(it.time)}</span>`:""}</div></div>`).join("")}</div>`;
   } else if (calSel) {
     panel = `<div class="day-panel"><h3>${fmtTanggal(calSel)}</h3>${emptyHTML("📭","Tidak ada kegiatan di tanggal ini.")}</div>`;
@@ -684,6 +684,7 @@ function bindView() {
   c.querySelectorAll("[data-expand]").forEach(b => b.onclick = () => toggleExpand(b.dataset.expand));
   c.querySelectorAll("[data-file]").forEach(b => b.onclick = (e) => { e.preventDefault(); downloadFile(b.dataset.file, b.dataset.orig); });
   c.querySelectorAll("[data-detail]").forEach(b => b.onclick = () => { const [k,id] = b.dataset.detail.split(":"); openDetail(k, id); });
+  c.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => setView(b.dataset.goto));
   c.querySelectorAll("[data-peserta]").forEach(b => b.onclick = () => openPeserta(b.dataset.peserta));
   const chatForm = c.querySelector("#chatForm"); if (chatForm) chatForm.onsubmit = (e) => { e.preventDefault(); sendChat(); };
   const chatReload = c.querySelector("#chatReload"); if (chatReload) chatReload.onclick = () => loadChat();
