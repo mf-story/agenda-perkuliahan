@@ -17,6 +17,7 @@ let agendaTime = "pekan";                // pekan|hari|lampau|semua
 let agendaType = "semua";                // semua|pertemuan|kegiatan
 let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
 let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
+let deferredPrompt = null;                // event beforeinstallprompt (pasang PWA)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
 const store = { matkul: [], jadwal: [], tugas: [], agenda: [], catatan: [], users: [], pertemuan: [], kelompok: [], mahasiswa: [], chat: [] };
@@ -822,6 +823,9 @@ function openAccount() {
     items.unshift(`<button data-go="matkul">📚 Mata Kuliah</button>`);
   }
   if (isAdmin()) items.push(`<button data-go="pengguna">⚙️ Kelola Pengguna</button>`);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (!isStandalone && (deferredPrompt || isIOS)) items.unshift(`<button id="acInstall">📲 Pasang Aplikasi</button>`);
   items.push(`<button id="acPass">🔑 Ganti Sandi</button>`);
   items.push(`<button class="danger" id="acLogout">⎋ Keluar</button>`);
   const isMhs = me.role === "mahasiswa";
@@ -834,8 +838,21 @@ function openAccount() {
     <div class="account-actions">${items.join("")}</div>`;
   openModal();
   document.querySelectorAll("#modalBody [data-go]").forEach(b => b.onclick = () => { closeModal(); setView(b.dataset.go); });
+  const acInstall = document.getElementById("acInstall"); if (acInstall) acInstall.onclick = () => promptInstall(isIOS);
   document.getElementById("acPass").onclick = openGantiSandi;
   document.getElementById("acLogout").onclick = logout;
+}
+async function promptInstall(isIOS) {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice.catch(() => ({}));
+    deferredPrompt = null; closeModal();
+    if (choice && choice.outcome !== "accepted") toast("Pemasangan dibatalkan");
+  } else if (isIOS) {
+    closeModal(); toast("Di iPhone: ketuk ikon Bagikan ⬆ lalu ‘Tambah ke Layar Utama’.");
+  } else {
+    closeModal(); toast("Buka menu browser ⋮ → ‘Install app’ / ‘Tambahkan ke layar utama’.");
+  }
 }
 function openGantiSandi() {
   document.getElementById("modalTitle").textContent = "Ganti Sandi";
@@ -991,6 +1008,10 @@ function setupTugasForm(data) {
   const aAll = document.getElementById("aAll"), aNone = document.getElementById("aNone");
   if (aAll) aAll.onclick = () => { cont.querySelectorAll("input").forEach(i => i.checked = true); updCount(); };
   if (aNone) aNone.onclick = () => { cont.querySelectorAll("input").forEach(i => i.checked = false); updCount(); };
+  // Pilih pertemuan -> tenggat ikut tanggal pertemuan (tetap bisa diubah manual).
+  const syncDeadline = () => { const p = store.pertemuan.find(x => x.id === pertSel.value); const dl = document.querySelector('#modalBody [name="deadline"]'); if (p && p.tanggal && dl) dl.value = p.tanggal; };
+  if (pertSel) pertSel.addEventListener("change", syncDeadline);
+  if (!data.id && pertSel && pertSel.value) syncDeadline();
   if (tipeSel.value === "kelompok") fillAnggota();
 }
 function setupAgendaForm(data) {
@@ -1118,6 +1139,8 @@ function init() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
   const si = document.getElementById("searchInput");
   si.oninput = () => { searchTerm = si.value.trim(); if (currentView === "agenda") render(); };
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredPrompt = e; });
+  window.addEventListener("appinstalled", () => { deferredPrompt = null; toast("Aplikasi terpasang ✓"); });
   boot();
 }
 document.addEventListener("DOMContentLoaded", init);
