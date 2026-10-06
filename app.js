@@ -353,11 +353,12 @@ function renderKalender() {
   const prevDays = new Date(calY, calM, 0).getDate();
   const todayIso = isoToday();
   let cells = "";
-  for (let i = 0; i < startDow; i++) cells += `<div class="cal-cell dim"><span class="num">${prevDays - startDow + i + 1}</span></div>`;
+  for (let i = 0; i < startDow; i++) cells += `<div class="cal-cell dim ${i===0?"su":""}"><span class="num">${prevDays - startDow + i + 1}</span></div>`;
   for (let dnum = 1; dnum <= daysIn; dnum++) {
     const iso = `${calY}-${String(calM+1).padStart(2,"0")}-${String(dnum).padStart(2,"0")}`;
     const has = map[iso] && map[iso].length;
-    const cls = [has ? "has-event" : "", iso === todayIso ? "today" : "", iso === calSel ? "selected" : ""].join(" ");
+    const dow = (startDow + dnum - 1) % 7;
+    const cls = [has ? "has-event" : "", iso === todayIso ? "today" : "", iso === calSel ? "selected" : "", dow === 0 ? "su" : ""].join(" ");
     cells += `<div class="cal-cell ${cls}" data-day="${iso}"><span class="num">${dnum}</span>${has?`<div class="cal-dots">${map[iso].slice(0,4).map(it=>`<i class="d-${it.t}"></i>`).join("")}</div>`:""}</div>`;
   }
   let panel = "";
@@ -374,7 +375,7 @@ function renderKalender() {
       <button class="round-btn" id="calNext">›</button>
     </div>
     <div class="cal-legend"><span><i class="d-pertemuan"></i>Pertemuan</span><span><i class="d-kegiatan"></i>Kegiatan</span><span><i class="d-tugas"></i>Tenggat</span></div>
-    <div class="cal-dow">${DOW.map((d,i)=>`<div class="${i===0||i===6?"we":""}">${d}</div>`).join("")}</div>
+    <div class="cal-dow">${DOW.map((d,i)=>`<div class="${i===0?"su":i===6?"sa":""}">${d}</div>`).join("")}</div>
     <div class="cal-grid">${cells}</div>${panel}`;
 }
 
