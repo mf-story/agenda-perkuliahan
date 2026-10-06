@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f2a4a" />
+  <title>Agenda Perkuliahan — Kelas 26 B</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="logo-unismuh.png" />
+  <link rel="apple-touch-icon" href="logo-unismuh.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Agenda Kuliah" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ========== LOGIN ========== -->
+  <div class="login-screen" id="loginScreen" hidden>
+    <div class="login-card">
+      <div class="login-logo"><img src="logo-unismuh.png" alt="Logo Unismuh" /></div>
+      <h1>Agenda Perkuliahan</h1>
+      <p class="login-sub">Kelas 26 B · Program Doktor Pendidikan<br>Universitas Muhammadiyah Makassar</p>
+      <form class="login-form" id="loginForm">
+        <div class="login-error" id="loginError" hidden></div>
+        <label class="login-field"><span class="lf-ic">👤</span><input name="username" autocomplete="username" placeholder="Username" aria-label="Username" required /></label>
+        <label class="login-field"><span class="lf-ic">🔒</span><input name="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required /></label>
+        <button class="btn gold login-btn" type="submit">Masuk →</button>
+      </form>
+      <p class="login-foot">Program Doktor Pendidikan · Pascasarjana Unismuh Makassar</p>
+    </div>
+  </div>
+
+  <!-- ========== APP ========== -->
+  <div id="app" hidden>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo"><img src="logo-unismuh.png" alt="Logo Unismuh" /></div>
+        <div class="brand-text">
+          <h1>Agenda Perkuliahan</h1>
+          <div class="brand-sub">Kelas 26 B · Program Doktor Pendidikan Unismuh Makassar</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="bellBtn" title="Notifikasi">🔔<span class="notif-badge" id="bellBadge" hidden>0</span></button>
+        <button class="avatar-btn" id="avatarBtn" title="Akun">A</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <div class="stat-bar" id="statBar"></div>
+      <div class="toolbar" id="toolbar">
+        <div class="search-wrap"><span class="search-ic">🔎</span><input id="searchInput" placeholder="Cari…" /></div>
+        <select id="mkFilter" class="mk-filter" hidden></select>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div id="viewRoot"></div>
+    </main>
+
+    <button class="fab" id="fab" title="Tambah">＋</button>
+
+    <nav class="tabbar" id="tabbar">
+      <button class="tab is-active" data-tab="agenda"><span class="ti">🗓️</span>Agenda</button>
+      <button class="tab" data-tab="kalender"><span class="ti">📅</span>Kalender</button>
+      <button class="tab" data-tab="tugas"><span class="ti">✔️</span>Tugas</button>
+    </nav>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal-sheet" id="modalSheet">
+      <div class="modal-grip"></div>
+      <div class="modal-top"><h2 id="modalTitle">Form</h2><button class="modal-close" id="modalClose">✕</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+  </script>
+</body>
+</html>

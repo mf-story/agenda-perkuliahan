@@ -1,0 +1,16 @@
+{
+  "name": "Agenda Perkuliahan — Kelas 26 B",
+  "short_name": "Agenda Kuliah",
+  "description": "Agenda perkuliahan Program Doktor Pendidikan — Universitas Muhammadiyah Makassar.",
+  "lang": "id",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f2a4a",
+  "theme_color": "#0f2a4a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "logo-unismuh.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
