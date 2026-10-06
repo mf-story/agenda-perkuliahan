@@ -50,12 +50,14 @@ function selisihHari(iso) { const t = new Date(); t.setHours(0,0,0,0); const d =
 function lewatTenggat(t) { return !!(t.deadline && selisihHari(t.deadline) < 0); }
 function tugasSelesai(t) { return !!t.selesai || !!(t.mine && t.mine.selesai) || lewatTenggat(t); }
 // Jam mulai pertemuan terkait (zona WITA/UTC+8) agar konsisten device & server.
-function pertemuanStartMs(t) {
-  if (!t.pertemuanId) return null;
-  const p = store.pertemuan.find(x => x.id === t.pertemuanId);
+function pertemuanStartMsP(p) {
   if (!p || !p.tanggal) return null;
   const ms = Date.parse(p.tanggal + "T" + (p.waktu || "00:00") + ":00+08:00");
   return isNaN(ms) ? null : ms;
+}
+function pertemuanStartMs(t) {
+  if (!t.pertemuanId) return null;
+  return pertemuanStartMsP(store.pertemuan.find(x => x.id === t.pertemuanId));
 }
 function bolehTandai(t) { const s = pertemuanStartMs(t); return s == null ? true : Date.now() >= s; }
 function startLabelTugas(t) { const p = t.pertemuanId && store.pertemuan.find(x => x.id === t.pertemuanId); return (p && p.tanggal) ? ` (${fmtTanggal(p.tanggal)}${p.waktu ? " · " + p.waktu : ""})` : ""; }
@@ -100,12 +102,18 @@ async function afterLogin() {
   const now = new Date(); calY = now.getFullYear(); calM = now.getMonth();
   await loadData();
   setView("agenda");
-  loadNotif();
+  await loadNotif();
+  ensureNotifPermission();
+  // Baseline agar tak memberi tahu item lama saat baru masuk.
+  lastNotifTs = (notifData.events || []).reduce((m, e) => Math.max(m, e.ts), 0);
+  try { store.chat = await api("/chat"); } catch {}
+  lastChatTs = (store.chat || []).reduce((m, c) => Math.max(m, c.ts), 0);
   clearInterval(window._notifTimer);
-  window._notifTimer = setInterval(loadNotif, 60000);
+  clearInterval(window._pollTimer);
+  window._pollTimer = setInterval(pollUpdates, 20000);
 }
-async function doLogin(u, p) { const r = await api("/login", "POST", { username: u, password: p }); token = r.token; me = r.user; localStorage.setItem(TOKEN_KEY, token); await afterLogin(); }
-function logout() { token = null; me = null; localStorage.removeItem(TOKEN_KEY); clearInterval(window._notifTimer); clearInterval(window._chatTimer); closeModal(); showLogin(); }
+async function doLogin(u, p) { initAudio(); const r = await api("/login", "POST", { username: u, password: p }); token = r.token; me = r.user; localStorage.setItem(TOKEN_KEY, token); await afterLogin(); }
+function logout() { token = null; me = null; localStorage.removeItem(TOKEN_KEY); clearInterval(window._notifTimer); clearInterval(window._chatTimer); clearInterval(window._pollTimer); closeModal(); showLogin(); }
 
 /* ---------- Notifikasi ---------- */
 let notifData = { unread: 0, reminders: [], events: [] };
@@ -117,6 +125,86 @@ async function loadNotif() {
     badge.textContent = n > 9 ? "9+" : n;
     badge.hidden = n === 0;
   } catch {}
+}
+
+/* ---------- Notifikasi HP (PWA) + suara + pengingat jadwal ---------- */
+let lastNotifTs = 0, lastChatTs = 0, _audioCtx = null;
+const notifiedSched = new Set(JSON.parse(localStorage.getItem("agenda_notified_sched") || "[]"));
+function saveNotifiedSched() { try { localStorage.setItem("agenda_notified_sched", JSON.stringify([...notifiedSched].slice(-300))); } catch {} }
+function initAudio() {
+  try { _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (_audioCtx.state === "suspended") _audioCtx.resume(); } catch {}
+}
+function playNotifSound() {
+  try {
+    initAudio(); if (!_audioCtx) return;
+    const t = _audioCtx.currentTime; const notes = [880, 1174.7];
+    notes.forEach((f, i) => {
+      const o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.14);
+      g.gain.exponentialRampToValueAtTime(0.25, t + i * 0.14 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.14 + 0.18);
+      o.connect(g); g.connect(_audioCtx.destination);
+      o.start(t + i * 0.14); o.stop(t + i * 0.14 + 0.2);
+    });
+  } catch {}
+}
+function ensureNotifPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") { try { Notification.requestPermission(); } catch {} }
+}
+function showSystemNotif(title, body, tag) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opts = { body: body || "", tag: tag || "agenda", renotify: true, icon: "./logo-unismuh.png", badge: "./icon.svg" };
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts)).catch(() => { try { new Notification(title, opts); } catch {} });
+    } else { new Notification(title, opts); }
+  } catch {}
+}
+function setChatDot(show) { const d = document.getElementById("chatDot"); if (d) d.hidden = !show; }
+function checkScheduleReminders() {
+  const now = Date.now();
+  (store.pertemuan || []).forEach(p => {
+    const ms = pertemuanStartMsP(p); if (!ms) return;
+    const mins = (ms - now) / 60000;
+    if (mins <= 30 && mins > -2) {  // 30 menit menjelang s/d 2 menit setelah mulai
+      const key = "P" + p.id; if (notifiedSched.has(key)) return;
+      notifiedSched.add(key); saveNotifiedSched();
+      const kapan = mins > 1 ? `dalam ${Math.round(mins)} menit` : "sekarang";
+      showSystemNotif("📚 Kuliah " + kapan, `${p.matkul} • P${p.pertemuanKe}${p.waktu ? " pukul " + p.waktu : ""}`, key);
+      playNotifSound();
+    }
+  });
+}
+async function pollUpdates() {
+  if (!token) return;
+  try {
+    const nd = await api("/notifications"); notifData = nd;
+    const badge = document.getElementById("bellBadge");
+    if (badge) { const n = nd.unread || 0; badge.textContent = n > 9 ? "9+" : n; badge.hidden = n === 0; }
+    const events = nd.events || [];
+    const newest = events.reduce((m, e) => Math.max(m, e.ts), 0);
+    const overlay = document.getElementById("modalOverlay");
+    const panelOpen = overlay && !overlay.hidden && document.getElementById("modalTitle").textContent === "Notifikasi";
+    if (lastNotifTs && newest > lastNotifTs && !panelOpen) {
+      const fresh = events.filter(e => e.ts > lastNotifTs); const e0 = fresh[0];
+      if (e0) { showSystemNotif(e0.title, e0.body, "evt-" + e0.id); playNotifSound(); }
+    }
+    if (newest) lastNotifTs = Math.max(lastNotifTs, newest);
+  } catch {}
+  try {
+    const chat = await api("/chat"); store.chat = chat;
+    if (currentView === "chat") updateChatList();
+    const newest = chat.length ? chat[chat.length - 1].ts : 0;
+    const viewingChat = currentView === "chat" && document.visibilityState === "visible";
+    if (lastChatTs && newest > lastChatTs) {
+      const fresh = chat.filter(m => m.ts > lastChatTs && !(me && m.userId === me.id));
+      if (fresh.length && !viewingChat) { const last = fresh[fresh.length - 1]; showSystemNotif("💬 " + last.nama, last.text, "chat"); playNotifSound(); setChatDot(true); }
+    }
+    if (newest) lastChatTs = Math.max(lastChatTs, newest);
+  } catch {}
+  checkScheduleReminders();
 }
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -130,11 +218,13 @@ const NOTIF_IC = { tugas: "✔️", pertemuan: "🗓️", agenda: "◐", reminde
 async function openNotif() {
   document.getElementById("modalTitle").textContent = "Notifikasi";
   const { reminders = [], events = [] } = notifData;
-  const remHTML = reminders.length ? `<div class="notif-sec">Tenggat terdekat</div>` + reminders.map(r => `
-    <div class="notif-item"><div class="notif-ic">⏰</div><div class="notif-body">
-      <div class="notif-title">${esc(r.body)}</div>
-      <div class="notif-sub">Tenggat ${fmtTanggal(r.deadline)} • ${r.days===0?"hari ini":r.days===1?"besok":r.days+" hari lagi"}</div>
-    </div></div>`).join("") : "";
+  const remHTML = reminders.length ? `<div class="notif-sec">Pengingat</div>` + reminders.map(r => {
+    if (r.type === "kuliah") {
+      const sub = `${r.waktu?"Pukul "+esc(r.waktu)+" \u2022 ":""}${fmtTanggal(r.tanggal)}`;
+      return `<div class="notif-item"><div class="notif-ic">📚</div><div class="notif-body"><div class="notif-title">${esc(r.title)}</div><div class="notif-sub">${sub}</div></div></div>`;
+    }
+    return `<div class="notif-item"><div class="notif-ic">⏰</div><div class="notif-body"><div class="notif-title">${esc(r.body)}</div><div class="notif-sub">Tenggat ${fmtTanggal(r.deadline)} • ${r.days===0?"hari ini":r.days===1?"besok":r.days+" hari lagi"}</div></div></div>`;
+  }).join("") : "";
   const evHTML = events.length ? `<div class="notif-sec">Aktivitas terbaru<button class="notif-clear" id="notifClear">🧹 Bersihkan semua</button></div>` + events.map(n => `
     <div class="notif-item ${n.unread?"unread":""}"><div class="notif-ic">${NOTIF_IC[n.type]||"🔔"}</div><div class="notif-body">
       <div class="notif-title">${esc(n.title)}</div>
@@ -183,6 +273,7 @@ function setView(v) {
   window.scrollTo(0, 0);
   clearInterval(window._chatTimer);
   if (v === "chat") {
+    setChatDot(false);
     scrollChatBottom();
     const ci = document.getElementById("chatInput"); if (ci) ci.focus();
     loadChat();
@@ -1015,7 +1106,7 @@ function init() {
     try { await doLogin(fd.get("username").trim(), fd.get("password")); }
     catch (ex) { err.textContent = ex.message; err.hidden = false; }
   };
-  document.querySelectorAll(".tab").forEach(t => t.onclick = () => setView(t.dataset.tab));
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => { initAudio(); setView(t.dataset.tab); });
   document.getElementById("fab").onclick = onFab;
   document.getElementById("avatarBtn").onclick = openAccount;
   document.getElementById("bellBtn").onclick = openNotif;

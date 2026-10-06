@@ -511,9 +511,20 @@ const server = http.createServer(async (req, res) => {
           const days = Math.round((new Date(t.deadline + "T00:00").getTime() - today) / 86400000);
           if (days < 0 || days > 3) return;
           if (!isManager) { const sub = DB.submissions.find(s => s.tugasId === t.id && s.studentId === me.id); if (sub && sub.selesai) return; }
-          reminders.push({ id: "rem-" + t.id, type: "reminder", title: "Tenggat tugas", body: `${t.judul}${t.matkul ? " — " + t.matkul : ""}`, deadline: t.deadline, days });
+          reminders.push({ id: "rem-" + t.id, type: "reminder", title: "Tenggat tugas", body: `${t.judul}${t.matkul ? " — " + t.matkul : ""}`, deadline: t.deadline, days, _when: new Date(t.deadline + "T00:00").getTime() });
         });
-        reminders.sort((a, b) => a.days - b.days);
+        // Pengingat jadwal kuliah (pertemuan) 24 jam ke depan.
+        (DB.pertemuan || []).forEach(p => {
+          if (!p.tanggal) return;
+          if (!isManager && !enrolled(me.id, p.matkul)) return;
+          const start = Date.parse(p.tanggal + "T" + (p.waktu || "00:00") + ":00+08:00");
+          if (isNaN(start)) return;
+          const mins = (start - Date.now()) / 60000;
+          if (mins < -15 || mins > 1440) return;
+          reminders.push({ id: "kul-" + p.id, type: "kuliah", title: "Kuliah: " + p.matkul, tanggal: p.tanggal, waktu: p.waktu || "", _when: start });
+        });
+        reminders.sort((a, b) => (a._when || 0) - (b._when || 0));
+        reminders.forEach(r => delete r._when);
         return sendJSON(res, 200, { unread: events.filter(e => e.unread).length, reminders, events });
       }
     }
