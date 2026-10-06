@@ -795,6 +795,7 @@ function openForm(tipe, id, preset) {
     <div class="field" id="mAnggotaWrap" style="${data.tipe==="kelompok"?"":"display:none"}">
       <label>Anggota Kelompok</label>
       <div style="display:flex;gap:8px;margin-bottom:6px"><button type="button" class="btn sm ghost" id="aAll">Pilih semua</button><button type="button" class="btn sm ghost" id="aNone">Kosongkan</button><span style="margin-left:auto;align-self:center;font-size:.78rem;color:var(--muted)" id="aCount"></span></div>
+      <input id="aSearch" class="picker-search" placeholder="🔎 Cari nama / NIM…" autocomplete="off">
       <div id="mAnggota" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px"></div>
     </div>
     <div class="field"><label>Tenggat</label><input type="date" name="deadline" value="${esc(data.deadline||isoToday())}"></div>
@@ -872,6 +873,11 @@ function setupTugasForm(data) {
   if (!tipeSel || !cont) return;
   const preselected = new Set((data.anggota || []).map(a => a.id));
   let firstDone = false;
+  const search = document.getElementById("aSearch");
+  const applyFilter = () => {
+    const q = (search && search.value || "").toLowerCase().trim();
+    cont.querySelectorAll("label").forEach(l => { l.style.display = !q || l.textContent.toLowerCase().includes(q) ? "" : "none"; });
+  };
   const updCount = () => { if (countEl) countEl.textContent = `${cont.querySelectorAll("input:checked").length} dipilih`; };
   const checkedNow = () => firstDone ? new Set(Array.from(cont.querySelectorAll("input:checked")).map(i => i.value)) : preselected;
   const fillAnggota = () => {
@@ -881,8 +887,9 @@ function setupTugasForm(data) {
       <input type="checkbox" value="${esc(u.id)}" data-nama="${esc(u.nama)}" ${checked.has(u.id)?"checked":""} style="width:auto">
       <span><b>${esc(u.nama)}</b> <span style="color:var(--muted);font-size:.76rem">@${esc(u.username)}</span></span></label>`).join("")
       || '<div class="progress-meta" style="padding:8px">Tidak ada mahasiswa pada mata kuliah ini.</div>';
-    firstDone = true; updCount(); cont.onchange = updCount;
+    firstDone = true; updCount(); cont.onchange = updCount; applyFilter();
   };
+  if (search) search.oninput = applyFilter;
   const refreshPertemuan = () => { if (pertSel) pertSel.innerHTML = pertemuanOptions(pertSel.value, mkSel ? mkSel.value : data.matkul); };
   const toggleAnggota = () => { const on = tipeSel.value === "kelompok"; wrap.style.display = on ? "" : "none"; if (on) fillAnggota(); };
   tipeSel.onchange = toggleAnggota;
