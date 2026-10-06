@@ -177,9 +177,9 @@ function authUser(req) {
   return DB.users.find(u => u.id === payload.uid) || null;
 }
 function publicUser(u) { return { id: u.id, nama: u.nama, username: u.username, role: u.role }; }
-function pushNotif(type, title, body, matkul) {
+function pushNotif(type, title, body, matkul, meta) {
   if (!Array.isArray(DB.notifications)) DB.notifications = [];
-  DB.notifications.push({ id: uid(), ts: Date.now(), type, title, body: body || "", matkul: matkul || "" });
+  DB.notifications.push({ id: uid(), ts: Date.now(), type, title, body: body || "", matkul: matkul || "", ...(meta || {}) });
   if (DB.notifications.length > 300) DB.notifications = DB.notifications.slice(-300);
 }
 
@@ -376,7 +376,7 @@ const server = http.createServer(async (req, res) => {
       }
       const shape = () => ({ judul: s(body.judul), matkul: s(body.matkul), deadline: s(body.deadline), prioritas: ["tinggi", "sedang", "rendah"].includes(body.prioritas) ? body.prioritas : "sedang", deskripsi: s(body.deskripsi), tipe: body.tipe === "kelompok" ? "kelompok" : "individu", jenisKumpul: ["submit", "presentasi", "keduanya"].includes(body.jenisKumpul) ? body.jenisKumpul : "submit", pertemuanId: s(body.pertemuanId), anggota: Array.isArray(body.anggota) ? body.anggota.filter(a => a && a.id).map(a => ({ id: String(a.id), nama: String(a.nama || "") })) : [] });
       // Semua pengguna boleh membuat tugas; edit/hapus hanya pembuat atau dosen/admin.
-      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul); saveDB(); return sendJSON(res, 201, it); }
+      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); saveDB(); return sendJSON(res, 201, it); }
       const ti = DB.tugas.findIndex(x => x.id === id);
       if (ti < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
       if (!isManager && DB.tugas[ti].createdBy !== me.id) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin yang dapat mengubah tugas ini" });
@@ -427,14 +427,25 @@ const server = http.createServer(async (req, res) => {
       if (method === "POST" && parts[2] === "read") { me.lastReadTs = Date.now(); saveDB(); return sendJSON(res, 200, { ok: true }); }
       if (method === "GET") {
         const lastRead = me.lastReadTs || 0;
-        const relevant = n => !n.matkul || isManager || enrolled(me.id, n.matkul);
+        // Tugas kelompok hanya relevan utk anggota yang ditandai; tugas individu utk semua peserta matkul.
+        const relevant = n => {
+          if (isManager) return true;
+          if (n.matkul && !enrolled(me.id, n.matkul)) return false;
+          if (n.type === "tugas" && n.tipe === "kelompok" && Array.isArray(n.anggota) && n.anggota.length) return n.anggota.some(a => a.id === me.id);
+          return true;
+        };
         const events = (DB.notifications || []).filter(relevant).sort((a, b) => b.ts - a.ts).slice(0, 50)
           .map(n => ({ id: n.id, ts: n.ts, type: n.type, title: n.title, body: n.body, unread: n.ts > lastRead }));
         const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00").getTime();
+        const tugasRelevan = t => {
+          if (!enrolled(me.id, t.matkul)) return false;
+          if (t.tipe === "kelompok" && Array.isArray(t.anggota) && t.anggota.length) return t.anggota.some(a => a.id === me.id);
+          return true;
+        };
         const reminders = [];
         DB.tugas.forEach(t => {
           if (!t.deadline) return;
-          if (!isManager && !enrolled(me.id, t.matkul)) return;
+          if (!isManager && !tugasRelevan(t)) return;
           const days = Math.round((new Date(t.deadline + "T00:00").getTime() - today) / 86400000);
           if (days < 0 || days > 3) return;
           if (!isManager) { const sub = DB.submissions.find(s => s.tugasId === t.id && s.studentId === me.id); if (sub && sub.selesai) return; }
