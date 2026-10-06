@@ -225,8 +225,8 @@ function updateChrome() {
     if (isManager()) {
       const total = store.tugas.length;
       const tgt = store.tugas.filter(t => t.deadline && selisihHari(t.deadline)>=0 && selisihHari(t.deadline)<=7).length;
-      const sub = store.tugas.reduce((n,t)=>n+((t.progres&&t.progres.submitted)||0),0);
-      sb.innerHTML = statHTML(total,"Total Tugas") + statHTML(tgt,"Tenggat ≤7h",true) + statHTML(sub,"Terkumpul");
+      const selesai = store.tugas.filter(t => tugasSelesai(t)).length;
+      sb.innerHTML = statHTML(total,"Total Tugas") + statHTML(tgt,"Tenggat ≤7h",true) + statHTML(selesai,"Selesai");
     } else {
       const aktif = store.tugas.filter(t => !tugasSelesai(t)).length;
       const tgt = store.tugas.filter(t => t.deadline && selisihHari(t.deadline)>=0 && selisihHari(t.deadline)<=7 && !tugasSelesai(t)).length;
@@ -369,9 +369,8 @@ function taskHTML(t) {
   const lewat = lewatTenggat(t) && !(t.mine && t.mine.selesai);
   const pr = t.prioritas || "sedang";
   const tipeBadge = `<span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>`;
-  const jkLabel = { submit:"Submit", presentasi:"Presentasi", keduanya:"Submit + Presentasi" }[t.jenisKumpul||"submit"];
-  const jkBadge = `<span class="tag blue">${jkLabel}</span>`;
-  const perluBerkas = (t.jenisKumpul||"submit") !== "presentasi";
+  const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
+  const jkBadge = isPres ? `<span class="tag blue">Presentasi</span>` : "";
   const canEdit = isManager() || (me && t.createdBy === me.id);
   let extra = "";
   if (isManager()) {
@@ -379,15 +378,15 @@ function taskHTML(t) {
     const pct = p.total ? Math.round(p.done/p.total*100) : 0;
     const tDone = !!t.selesai;
     extra = `<div class="progress"><div class="progress-bar"><span style="width:${pct}%"></span></div>
-      <div class="progress-meta">${p.done}/${p.total} mahasiswa selesai • ${p.submitted} mengumpulkan</div></div>
+      <div class="progress-meta">${p.done}/${p.total} mahasiswa menandai selesai</div></div>
       <div class="task-actions" style="margin-top:8px"><button class="btn sm ${tDone?"ghost":"gold"}" data-tdone="${t.id}">${tDone?"↺ Aktifkan kembali":"✓ Tandai Selesai"}</button></div>
-      <button class="expand-btn" data-expand="${t.id}">${expandedTugas.has(t.id)?"▴ Sembunyikan":"▾ Lihat pengumpulan"}</button>
+      <button class="expand-btn" data-expand="${t.id}">${expandedTugas.has(t.id)?"▴ Sembunyikan":"▾ Lihat status mahasiswa"}</button>
       <div id="sub-${t.id}">${expandedTugas.has(t.id)?subListHTML(t.id):""}</div>`;
   } else {
-    const file = t.mine && t.mine.fileOrig ? `<a class="file-link" data-file="${esc(t.mine.fileName)}" data-orig="${esc(t.mine.fileOrig)}" href="#">⬇ ${esc(t.mine.fileOrig)}</a>` : "";
-    const statusTxt = done ? (lewat ? "✔ Selesai • tenggat lewat" : "✔ Selesai"+((t.mine&&t.mine.fileOrig)?" • berkas terkumpul":"")) : "○ Belum selesai";
-    extra = `<div class="mine-status ${done?"ok":""}">${statusTxt} ${file}</div>
-      <div class="task-actions" style="margin-top:8px"><button class="btn sm gold" data-submit="${t.id}">${perluBerkas?"⬆ "+(t.mine&&t.mine.selesai?"Perbarui":"Kumpulkan"):(t.mine&&t.mine.selesai?"✎ Perbarui":"✓ Tandai Selesai")}</button></div>`;
+    const mineDone = !!(t.mine && t.mine.selesai);
+    const statusTxt = done ? (lewat ? "✔ Selesai • tenggat lewat" : "✔ Selesai") : "○ Belum selesai";
+    extra = `<div class="mine-status ${done?"ok":""}">${statusTxt}</div>
+      <div class="task-actions" style="margin-top:8px"><button class="btn sm ${mineDone?"ghost":"gold"}" data-toggle="${t.id}">${mineDone?"↺ Batalkan":"✓ Tandai Selesai"}</button></div>`;
   }
   return `<div class="task-item p-${pr} ${done?"done":""}">
     ${isManager()?`<span class="task-check" style="cursor:default;background:#f1f5fb;color:var(--navy)">${(t.progres&&t.progres.done)||0}</span>`:`<button class="task-check" data-toggle="${t.id}">✓</button>`}
@@ -404,10 +403,10 @@ function taskHTML(t) {
 function subListHTML(id) {
   const subs = store._subs && store._subs[id];
   if (!subs) return `<div class="sub-list"><div class="progress-meta">Memuat…</div></div>`;
-  if (!subs.length) return `<div class="sub-list"><div class="progress-meta">Belum ada yang mengumpulkan.</div></div>`;
+  if (!subs.length) return `<div class="sub-list"><div class="progress-meta">Belum ada yang menandai selesai.</div></div>`;
   return `<div class="sub-list">${subs.map(s => `<div class="sub-row ${s.selesai?"done":""}">
     <span class="dot"></span><span class="nm">${esc(s.studentNama)}${s.kelompok?` <span class="tag mk">${esc(s.kelompok)}</span>`:""}</span>
-    <span class="meta">${s.fileOrig?`<a class="file-link" data-file="${esc(s.fileName)}" data-orig="${esc(s.fileOrig)}" href="#">⬇ berkas</a>`:""}${s.link?`<a class="file-link" href="${esc(s.link)}" target="_blank" rel="noopener">🔗</a>`:""}<span>${s.selesai?"Selesai":"Belum"}</span></span>
+    <span class="meta"><span>${s.selesai?"Selesai":"Belum"}</span></span>
   </div>`).join("")}</div>`;
 }
 
@@ -496,7 +495,6 @@ function bindView() {
   c.querySelectorAll("[data-del]").forEach(b => b.onclick = () => hapus(b.dataset.del, b.dataset.id));
   c.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => toggleTugas(b.dataset.toggle));
   c.querySelectorAll("[data-tdone]").forEach(b => b.onclick = () => toggleTugasDone(b.dataset.tdone));
-  c.querySelectorAll("[data-submit]").forEach(b => b.onclick = () => openSubmit(b.dataset.submit));
   c.querySelectorAll("[data-expand]").forEach(b => b.onclick = () => toggleExpand(b.dataset.expand));
   c.querySelectorAll("[data-file]").forEach(b => b.onclick = (e) => { e.preventDefault(); downloadFile(b.dataset.file, b.dataset.orig); });
   c.querySelectorAll("[data-detail]").forEach(b => b.onclick = () => { const [k,id] = b.dataset.detail.split(":"); openDetail(k, id); });
@@ -546,7 +544,6 @@ function openDetail(kind, id) {
   if (kind === "pertemuan") {
     const p = store.pertemuan.find(x => x.id === id); if (!p) return;
     const tugasP = store.tugas.filter(t => t.pertemuanId === id);
-    const jkLabel = { submit:"Submit", presentasi:"Presentasi", keduanya:"Submit + Presentasi" };
     document.getElementById("modalTitle").textContent = "Detail Pertemuan";
     document.getElementById("modalBody").innerHTML = `
       <div class="detail-hero">${dateBadge(p.tanggal)}
@@ -567,7 +564,7 @@ function openDetail(kind, id) {
           const presenters = isPres && t.anggota && t.anggota.length ? `<div class="dtask-pres">🎤 Presentasi: ${t.anggota.map(a=>esc(a.nama)).join(", ")}</div>` : "";
           const canT = isManager() || (me && t.createdBy === me.id);
           return `<div class="dtask-row"><div class="dtask-main"><div class="t">${esc(t.judul)}</div>${presenters}</div>
-            <div class="dtask-badges"><span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span><span class="tag blue">${jkLabel[t.jenisKumpul||"submit"]}</span>${canT?`<button class="btn-icon" data-tedit="${t.id}" title="Edit tugas">✎</button>`:""}</div></div>`;
+            <div class="dtask-badges"><span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>${isPres?`<span class="tag blue">Presentasi</span>`:""}${canT?`<button class="btn-icon" data-tedit="${t.id}" title="Edit tugas">✎</button>`:""}</div></div>`;
         }).join(""):'<div class="dtask-empty">Belum ada tugas untuk pertemuan ini.</div>'}</div>
       </div>
       <div class="modal-actions">
@@ -706,7 +703,7 @@ function openForm(tipe, id, preset) {
       <div id="mAnggota" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px"></div>
     </div>
     <div class="field"><label>Tenggat</label><input type="date" name="deadline" value="${esc(data.deadline||isoToday())}"></div>
-    <div class="field"><label>Pengumpulan</label><select name="jenisKumpul">${[["submit","Submit"],["presentasi","Presentasi"],["keduanya","Keduanya"]].map(([v,l])=>`<option value="${v}" ${(data.jenisKumpul||"submit")===v?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="field"><label>Jenis Tugas</label><select name="jenisKumpul">${[["submit","Tugas biasa"],["presentasi","Presentasi"]].map(([v,l])=>`<option value="${v}" ${(data.jenisKumpul||"submit")===v?"selected":""}>${l}</option>`).join("")}</select></div>
     <div class="field"><label>Deskripsi / Instruksi</label><textarea name="deskripsi">${esc(data.deskripsi||"")}</textarea></div>`;
   else if (tipe === "pertemuan") b = `
     <div class="field"><label>Mata Kuliah</label><select name="matkul">${matkulOptions(data.matkul)}</select></div>
@@ -892,39 +889,6 @@ function openPeserta(matkulId) {
     try { await api(`/matkul/${matkulId}/peserta`, "PUT", { peserta }); await reload("matkul"); closeModal(); render(); toast("Peserta disimpan ✓"); }
     catch (e) { toast(e.message); }
   };
-}
-
-/* ---------- Submit tugas ---------- */
-function openSubmit(id) {
-  const t = store.tugas.find(x => x.id === id); const mine = t.mine || {};
-  const jk = t.jenisKumpul || "submit";
-  const perluBerkas = jk !== "presentasi";
-  const isKelompok = t.tipe === "kelompok";
-  const perluUpload = perluBerkas && isKelompok; // tugas individu tidak upload di aplikasi
-  const jkLabel = { submit:"Submit berkas", presentasi:"Presentasi", keduanya:"Submit + Presentasi" }[jk];
-  document.getElementById("modalTitle").textContent = "Kumpulkan Tugas";
-  document.getElementById("modalBody").innerHTML = `
-    <div class="field"><label>Tugas</label><input value="${esc(t.judul)}" disabled></div>
-    <div class="field"><label>Jenis Pengumpulan</label><input value="${jkLabel}" disabled></div>
-    ${isKelompok?`<div class="field"><label>Nama Kelompok</label><input name="kelompok" value="${esc(mine.kelompok||"")}" placeholder="Kelompok 1"></div>`:""}
-    ${perluUpload?`<div class="field"><label>Unggah Berkas (maks 6 MB)</label><div class="file-input-row"><input type="file" id="subFile">${mine.fileOrig?`<span class="file-name-tag">Saat ini: ${esc(mine.fileOrig)}</span>`:""}</div></div>`:""}
-    ${perluBerkas?`<div class="field"><label>Tautan Jawaban (opsional)</label><input name="link" value="${esc(mine.link||"")}" placeholder="https://…"></div>`:""}
-    <div class="field"><label>Catatan untuk Dosen</label><textarea name="catatan">${esc(mine.catatan||"")}</textarea></div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:10px"><input type="checkbox" id="subDone" ${mine.selesai?"checked":""} style="width:auto"> ${jk==="presentasi"?"Tandai sudah presentasi":"Tandai selesai"}</label>
-    <div class="modal-actions"><button class="btn ghost" id="fCancel">Batal</button><button class="btn gold" id="fSave">Kirim</button></div>`;
-  openModal();
-  document.getElementById("fCancel").onclick = closeModal;
-  document.getElementById("fSave").onclick = () => kirimTugas(id);
-}
-function fileToB64(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(file); }); }
-async function kirimTugas(id) {
-  const g = s => { const el = document.querySelector(s); return el ? el.value.trim() : ""; };
-  const payload = { catatan: g('#modalBody [name="catatan"]'), link: g('#modalBody [name="link"]'), kelompok: g('#modalBody [name="kelompok"]'), selesai: document.getElementById("subDone").checked };
-  try {
-    const fileEl = document.getElementById("subFile"); const file = fileEl && fileEl.files[0];
-    if (file) { if (file.size > 6*1024*1024) return toast("Ukuran file maksimal 6 MB"); payload.fileBase64 = await fileToB64(file); payload.fileOrig = file.name; }
-    await api("/submissions/"+id, "POST", payload); await reload("tugas"); closeModal(); updateChrome(); render(); toast("Tugas dikumpulkan ✓");
-  } catch (e) { toast(e.message); }
 }
 
 /* ---------- Modal ---------- */
