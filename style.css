@@ -102,7 +102,7 @@ body {
 .stat.accent::before { background: var(--grad-gold); }
 .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .stat-num {
-  font-size: 1.5rem; font-weight: 800; line-height: 1.1;
+  font-size: 1.3rem; font-weight: 800; line-height: 1.1;
   background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
 }
 .stat.accent .stat-num { background: var(--grad-gold); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
@@ -152,10 +152,10 @@ body {
 .add-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--grad); color: #fff; border: none; }
 
 /* ---------- Cards list ---------- */
-.agenda-list { display: flex; flex-direction: column; gap: 12px; }
+.agenda-list { display: flex; flex-direction: column; gap: 10px; }
 .mcard {
-  background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--blue);
-  border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow-sm); cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+  border-radius: 14px; padding: 12px; box-shadow: var(--shadow-sm); cursor: pointer;
   transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s ease; animation: cardIn .3s ease both;
 }
 @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -165,19 +165,19 @@ body {
 .mcard.k-selesai { border-left-color: var(--green); opacity: .85; }
 .mcard-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .mcard-headmain { flex: 1; min-width: 0; }
-.pill { display: inline-block; font-size: .64rem; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #1d4ed8; background: #e0edff; padding: 3px 10px; border-radius: 999px; margin-bottom: 7px; }
+.pill { display: inline-block; font-size: .6rem; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: #1d4ed8; background: #e0edff; padding: 2px 9px; border-radius: 999px; margin-bottom: 6px; }
 .k-kegiatan .pill { color: #92600a; background: #fef3c7; }
 .k-selesai .pill { color: #166534; background: #dcfce7; }
-.mcard-title { font-size: 1rem; font-weight: 700; color: var(--navy); line-height: 1.3; }
+.mcard-title { font-size: .9rem; font-weight: 700; color: var(--navy); line-height: 1.3; }
 .mcard-date-badge {
   flex: 0 0 auto; text-align: center; background: var(--grad-gold); color: var(--navy);
-  border-radius: 12px; padding: 6px 10px; min-width: 54px; box-shadow: 0 4px 10px rgba(212,175,55,.32);
+  border-radius: 11px; padding: 5px 9px; min-width: 48px; box-shadow: 0 4px 10px rgba(212,175,55,.32);
 }
-.mcard-date-badge .d { font-size: 1.25rem; font-weight: 800; line-height: 1; }
-.mcard-date-badge .m { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; }
-.mcard-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; font-size: .82rem; color: var(--muted); }
-.mcard-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.flag { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; }
+.mcard-date-badge .d { font-size: 1.05rem; font-weight: 800; line-height: 1; }
+.mcard-date-badge .m { font-size: .58rem; text-transform: uppercase; letter-spacing: .5px; }
+.mcard-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: .76rem; color: var(--muted); }
+.mcard-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.flag { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
 .flag.tugas { background: #fef3c7; color: #92600a; border-color: #f3dfa0; }
 .flag.pres { background: #e0edff; color: #1d4ed8; border-color: #c7dbfb; }
 .mcard-meta .mi { display: inline-flex; align-items: center; gap: 5px; }
@@ -301,8 +301,8 @@ body {
 
 /* ---------- Task item ---------- */
 .task-item {
-  display: flex; align-items: flex-start; gap: 12px; background: var(--card); border: 1px solid var(--line);
-  border-left: 5px solid var(--muted); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow-sm);
+  display: flex; align-items: flex-start; gap: 10px; background: var(--card); border: 1px solid var(--line);
+  border-left: 4px solid var(--muted); border-radius: 14px; padding: 11px; margin-bottom: 10px; box-shadow: var(--shadow-sm);
 }
 .task-item.p-tinggi { border-left-color: var(--red); }
 .task-item.p-sedang { border-left-color: var(--amber); }
@@ -316,8 +316,8 @@ body {
 .task-check:hover { border-color: var(--green); }
 .task-item.done .task-check { background: var(--green); border-color: var(--green); color: #fff; }
 .task-body { flex: 1; min-width: 0; }
-.task-title { font-weight: 700; font-size: .96rem; color: var(--navy); }
-.task-meta { display: flex; gap: 8px 12px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); margin-top: 6px; align-items: center; }
+.task-title { font-weight: 700; font-size: .88rem; color: var(--navy); line-height: 1.3; }
+.task-meta { display: flex; gap: 6px 10px; flex-wrap: wrap; font-size: .75rem; color: var(--muted); margin-top: 5px; align-items: center; }
 .task-meta .due.urgent { color: var(--red); font-weight: 700; }
 .badge { font-size: .66rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; text-transform: capitalize; }
 .badge.tinggi { background: #fee2e2; color: var(--red); }
