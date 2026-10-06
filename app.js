@@ -168,6 +168,14 @@ function updateChrome() {
   const onAgenda = currentView === "agenda";
   const onTugas = currentView === "tugas";
   const isSecondary = !TABS.includes(currentView);
+
+  // Penanda semester aktif (dari data jadwal; default Semester 1)
+  const brandSem = document.getElementById("brandSem");
+  if (brandSem) {
+    const sem = (store.jadwal && store.jadwal.length) ? Math.max(...store.jadwal.map(j => Number(j.semester) || 1)) : 1;
+    brandSem.textContent = "Semester " + sem;
+    brandSem.hidden = false;
+  }
   document.getElementById("statBar").hidden = isSecondary || currentView === "kalender";
   document.getElementById("toolbar").hidden = isSecondary || currentView === "kalender";
   document.getElementById("searchInput").parentElement.style.display = onAgenda ? "" : "none";
