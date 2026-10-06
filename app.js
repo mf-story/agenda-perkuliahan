@@ -12,13 +12,13 @@ const BULAN_FULL = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Ag
 let token = localStorage.getItem(TOKEN_KEY) || null;
 let me = null;
 let currentView = "agenda";              // agenda|kalender|tugas|matkul|kelompok|jadwal|pengguna|catatan
-const TABS = ["agenda", "kalender", "tugas"];
+const TABS = ["agenda", "kalender", "tugas", "chat"];
 let agendaTime = "pekan";                // pekan|hari|lampau|semua
 let agendaType = "semua";                // semua|pertemuan|kegiatan
 let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
-const store = { matkul: [], jadwal: [], tugas: [], agenda: [], catatan: [], users: [], pertemuan: [], kelompok: [], mahasiswa: [] };
+const store = { matkul: [], jadwal: [], tugas: [], agenda: [], catatan: [], users: [], pertemuan: [], kelompok: [], mahasiswa: [], chat: [] };
 const expandedTugas = new Set();
 let calY, calM, calSel = null;
 
@@ -105,7 +105,7 @@ async function afterLogin() {
   window._notifTimer = setInterval(loadNotif, 60000);
 }
 async function doLogin(u, p) { const r = await api("/login", "POST", { username: u, password: p }); token = r.token; me = r.user; localStorage.setItem(TOKEN_KEY, token); await afterLogin(); }
-function logout() { token = null; me = null; localStorage.removeItem(TOKEN_KEY); clearInterval(window._notifTimer); closeModal(); showLogin(); }
+function logout() { token = null; me = null; localStorage.removeItem(TOKEN_KEY); clearInterval(window._notifTimer); clearInterval(window._chatTimer); closeModal(); showLogin(); }
 
 /* ---------- Notifikasi ---------- */
 let notifData = { unread: 0, reminders: [], events: [] };
@@ -135,15 +135,24 @@ async function openNotif() {
       <div class="notif-title">${esc(r.body)}</div>
       <div class="notif-sub">Tenggat ${fmtTanggal(r.deadline)} • ${r.days===0?"hari ini":r.days===1?"besok":r.days+" hari lagi"}</div>
     </div></div>`).join("") : "";
-  const evHTML = events.length ? `<div class="notif-sec">Aktivitas terbaru</div>` + events.map(n => `
+  const evHTML = events.length ? `<div class="notif-sec">Aktivitas terbaru<button class="notif-clear" id="notifClear">🧹 Bersihkan semua</button></div>` + events.map(n => `
     <div class="notif-item ${n.unread?"unread":""}"><div class="notif-ic">${NOTIF_IC[n.type]||"🔔"}</div><div class="notif-body">
       <div class="notif-title">${esc(n.title)}</div>
       <div class="notif-sub">${esc(n.body)}</div>
       <div class="notif-time">${timeAgo(n.ts)}</div>
-    </div></div>`).join("") : "";
+    </div><button class="notif-del" data-dismiss="${n.id}" title="Hapus notifikasi">✕</button></div>`).join("") : "";
   const body = (remHTML + evHTML) || emptyHTML("🔔", "Belum ada notifikasi.");
   document.getElementById("modalBody").innerHTML = body;
   openModal();
+  const clearBtn = document.getElementById("notifClear");
+  if (clearBtn) clearBtn.onclick = async () => {
+    try { await api("/notifications/clear", "POST", {}); await loadNotif(); openNotif(); toast("Notifikasi dibersihkan ✓"); }
+    catch (e) { toast(e.message); }
+  };
+  document.querySelectorAll("#modalBody [data-dismiss]").forEach(b => b.onclick = async () => {
+    try { await api("/notifications/dismiss", "POST", { id: b.dataset.dismiss }); await loadNotif(); openNotif(); }
+    catch (e) { toast(e.message); }
+  });
   // tandai sudah dibaca
   try { await api("/notifications/read", "POST", {}); } catch {}
   const badge = document.getElementById("bellBadge"); badge.hidden = true;
@@ -172,6 +181,13 @@ function setView(v) {
   updateChrome();
   render();
   window.scrollTo(0, 0);
+  clearInterval(window._chatTimer);
+  if (v === "chat") {
+    scrollChatBottom();
+    const ci = document.getElementById("chatInput"); if (ci) ci.focus();
+    loadChat();
+    window._chatTimer = setInterval(loadChat, 12000);
+  }
 }
 
 function updateChrome() {
@@ -186,13 +202,13 @@ function updateChrome() {
     brandSem.textContent = "Semester " + sem;
     brandSem.hidden = false;
   }
-  document.getElementById("statBar").hidden = isSecondary || currentView === "kalender";
-  document.getElementById("toolbar").hidden = isSecondary || currentView === "kalender";
+  document.getElementById("statBar").hidden = isSecondary || currentView === "kalender" || currentView === "chat";
+  document.getElementById("toolbar").hidden = isSecondary || currentView === "kalender" || currentView === "chat";
   document.getElementById("searchInput").parentElement.style.display = onAgenda ? "" : "none";
 
   // FAB visibility
   const fab = document.getElementById("fab");
-  fab.hidden = isSecondary; // tampil di agenda, kalender, tugas (mahasiswa & dosen boleh tambah)
+  fab.hidden = isSecondary || currentView === "chat"; // tak ada tambah di chat
 
   // filter mata kuliah (hanya tab Agenda)
   const mkFilter = document.getElementById("mkFilter");
@@ -250,7 +266,7 @@ function statHTML(n, l, accent) { return `<div class="stat ${accent?"accent":""}
 /* ---------- Render dispatcher ---------- */
 function render() {
   const root = document.getElementById("viewRoot");
-  const map = { agenda: renderAgenda, kalender: renderKalender, tugas: renderTugas, matkul: renderMatkul, kelompok: renderKelompok, jadwal: renderJadwal, pengguna: renderPengguna, catatan: renderCatatan };
+  const map = { agenda: renderAgenda, kalender: renderKalender, tugas: renderTugas, chat: renderChat, matkul: renderMatkul, kelompok: renderKelompok, jadwal: renderJadwal, pengguna: renderPengguna, catatan: renderCatatan };
   root.innerHTML = (map[currentView] || renderAgenda)();
   bindView();
 }
@@ -342,7 +358,7 @@ function renderKalender() {
     const iso = `${calY}-${String(calM+1).padStart(2,"0")}-${String(dnum).padStart(2,"0")}`;
     const has = map[iso] && map[iso].length;
     const cls = [has ? "has-event" : "", iso === todayIso ? "today" : "", iso === calSel ? "selected" : ""].join(" ");
-    cells += `<div class="cal-cell ${cls}" data-day="${iso}"><span class="num">${dnum}</span>${has?`<div class="cal-dots">${map[iso].slice(0,3).map(()=>"<i></i>").join("")}</div>`:""}</div>`;
+    cells += `<div class="cal-cell ${cls}" data-day="${iso}"><span class="num">${dnum}</span>${has?`<div class="cal-dots">${map[iso].slice(0,4).map(it=>`<i class="d-${it.t}"></i>`).join("")}</div>`:""}</div>`;
   }
   let panel = "";
   if (calSel && map[calSel]) {
@@ -357,7 +373,8 @@ function renderKalender() {
       <h2>${BULAN_FULL[calM]} ${calY}</h2>
       <button class="round-btn" id="calNext">›</button>
     </div>
-    <div class="cal-dow">${DOW.map(d=>`<div>${d}</div>`).join("")}</div>
+    <div class="cal-legend"><span><i class="d-pertemuan"></i>Pertemuan</span><span><i class="d-kegiatan"></i>Kegiatan</span><span><i class="d-tugas"></i>Tenggat</span></div>
+    <div class="cal-dow">${DOW.map((d,i)=>`<div class="${i===0||i===6?"we":""}">${d}</div>`).join("")}</div>
     <div class="cal-grid">${cells}</div>${panel}`;
 }
 
@@ -422,6 +439,65 @@ function subListHTML(id) {
     <span class="dot"></span><span class="nm">${esc(s.studentNama)}${s.kelompok?` <span class="tag mk">${esc(s.kelompok)}</span>`:""}</span>
     <span class="meta"><span>${s.selesai?"Selesai":"Belum"}</span></span>
   </div>`).join("")}</div>`;
+}
+
+/* ============================================================
+   CHAT (obrolan kelas)
+   ============================================================ */
+function renderChat() {
+  const msgs = store.chat || [];
+  const list = msgs.length ? msgs.map(chatBubble).join("") : `<div class="chat-empty">${emptyHTML("💬","Belum ada pesan. Mulai percakapan!")}</div>`;
+  return `<div class="chat-wrap">
+    <div class="chat-head"><div><h2>Obrolan Kelas</h2><div class="sub">${msgs.length} pesan • Kelas 26 B</div></div>
+      <button class="round-btn" id="chatReload" title="Muat ulang">⟳</button></div>
+    <div class="chat-list" id="chatList">${list}</div>
+    <form class="chat-composer" id="chatForm" autocomplete="off">
+      <input class="chat-input" id="chatInput" placeholder="Tulis pesan…" maxlength="2000" />
+      <button class="chat-send" type="submit" title="Kirim">➤</button>
+    </form>
+  </div>`;
+}
+function chatBubble(m) {
+  const mine = me && m.userId === me.id;
+  const canDel = mine || isManager();
+  const roleTag = m.role && m.role !== "mahasiswa" ? `<span class="chat-role">${esc(m.role)}</span>` : "";
+  return `<div class="chat-row ${mine?"me":""}">
+    ${mine?"":`<div class="chat-av">${esc(initial(m.nama))}</div>`}
+    <div class="chat-bubble">
+      ${mine?"":`<div class="chat-name">${esc(m.nama)} ${roleTag}</div>`}
+      <div class="chat-text">${esc(m.text)}</div>
+      <div class="chat-meta">${chatTime(m.ts)}${canDel?` <button class="chat-del" data-chatdel="${m.id}" title="Hapus">✕</button>`:""}</div>
+    </div>
+  </div>`;
+}
+function chatTime(ts) {
+  const d = new Date(ts); const today = new Date(); today.setHours(0,0,0,0);
+  const jam = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  return d >= today ? jam : d.toLocaleDateString("id-ID",{day:"numeric",month:"short"}) + " " + jam;
+}
+async function loadChat() {
+  try { store.chat = await api("/chat"); } catch (e) {}
+  if (currentView === "chat") updateChatList();
+}
+function updateChatList() {
+  const el = document.getElementById("chatList"); if (!el) return;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  el.innerHTML = (store.chat||[]).length ? (store.chat).map(chatBubble).join("") : `<div class="chat-empty">${emptyHTML("💬","Belum ada pesan. Mulai percakapan!")}</div>`;
+  const sub = document.querySelector(".chat-head .sub"); if (sub) sub.textContent = `${(store.chat||[]).length} pesan • Kelas 26 B`;
+  bindView();
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+function scrollChatBottom() { const el = document.getElementById("chatList"); if (el) el.scrollTop = el.scrollHeight; }
+async function sendChat() {
+  const input = document.getElementById("chatInput"); if (!input) return;
+  const text = input.value.trim(); if (!text) return;
+  input.value = "";
+  try { await api("/chat", "POST", { text }); await loadChat(); scrollChatBottom(); }
+  catch (e) { toast(e.message); input.value = text; }
+}
+async function hapusChat(id) {
+  try { await api("/chat/"+id, "DELETE"); store.chat = (store.chat||[]).filter(m => m.id !== id); updateChatList(); }
+  catch (e) { toast(e.message); }
 }
 
 /* ============================================================
@@ -513,6 +589,9 @@ function bindView() {
   c.querySelectorAll("[data-file]").forEach(b => b.onclick = (e) => { e.preventDefault(); downloadFile(b.dataset.file, b.dataset.orig); });
   c.querySelectorAll("[data-detail]").forEach(b => b.onclick = () => { const [k,id] = b.dataset.detail.split(":"); openDetail(k, id); });
   c.querySelectorAll("[data-peserta]").forEach(b => b.onclick = () => openPeserta(b.dataset.peserta));
+  const chatForm = c.querySelector("#chatForm"); if (chatForm) chatForm.onsubmit = (e) => { e.preventDefault(); sendChat(); };
+  const chatReload = c.querySelector("#chatReload"); if (chatReload) chatReload.onclick = () => loadChat();
+  c.querySelectorAll("[data-chatdel]").forEach(b => b.onclick = () => hapusChat(b.dataset.chatdel));
   const back = c.querySelector("#backHome"); if (back) back.onclick = () => setView("agenda");
   const cp = c.querySelector("#calPrev"), cn = c.querySelector("#calNext");
   if (cp) cp.onclick = () => { calM--; if (calM<0){calM=11;calY--;} render(); };

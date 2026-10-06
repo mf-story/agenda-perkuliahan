@@ -45,7 +45,7 @@ function ensureSeedAccounts() {
   if (changed) saveNow();
   // pastikan koleksi baru ada
   let c2 = false;
-  for (const k of ["pertemuan", "kelompok", "notifications"]) if (!Array.isArray(DB[k])) { DB[k] = []; c2 = true; }
+  for (const k of ["pertemuan", "kelompok", "notifications", "chat"]) if (!Array.isArray(DB[k])) { DB[k] = []; c2 = true; }
   if (c2) saveNow();
 }
 let saveTimer = null;
@@ -453,11 +453,42 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ---------- CHAT (obrolan kelas) ----------
+    if (resource === "chat") {
+      if (method === "GET") {
+        const list = (DB.chat || []).slice(-200).map(m => ({ id: m.id, userId: m.userId, nama: m.nama, role: m.role, text: m.text, ts: m.ts }));
+        return sendJSON(res, 200, list);
+      }
+      if (method === "POST") {
+        const text = String(body.text || "").trim();
+        if (!text) return sendJSON(res, 400, { error: "Pesan kosong" });
+        if (text.length > 2000) return sendJSON(res, 400, { error: "Pesan terlalu panjang (maks 2000 karakter)" });
+        if (!Array.isArray(DB.chat)) DB.chat = [];
+        const msg = { id: uid(), userId: me.id, nama: me.nama, role: me.role, text, ts: Date.now() };
+        DB.chat.push(msg);
+        if (DB.chat.length > 500) DB.chat = DB.chat.slice(-500);
+        saveDB();
+        return sendJSON(res, 201, msg);
+      }
+      if (method === "DELETE") {
+        const m = (DB.chat || []).find(x => x.id === id);
+        if (!m) return sendJSON(res, 404, { error: "Tidak ditemukan" });
+        if (m.userId !== me.id && !isManager) return sendJSON(res, 403, { error: "Hanya pengirim atau dosen/admin yang dapat menghapus" });
+        DB.chat = DB.chat.filter(x => x.id !== id);
+        saveDB();
+        return sendJSON(res, 200, { ok: true });
+      }
+    }
+
     // ---------- NOTIFICATIONS ----------
     if (resource === "notifications") {
       if (method === "POST" && parts[2] === "read") { me.lastReadTs = Date.now(); saveDB(); return sendJSON(res, 200, { ok: true }); }
+      if (method === "POST" && parts[2] === "dismiss") { const nid = String(body.id || ""); if (nid) me.dismissedNotif = [...new Set([...(me.dismissedNotif || []), nid])]; saveDB(); return sendJSON(res, 200, { ok: true }); }
+      if (method === "POST" && parts[2] === "clear") { me.notifClearedTs = Date.now(); me.dismissedNotif = []; saveDB(); return sendJSON(res, 200, { ok: true }); }
       if (method === "GET") {
         const lastRead = me.lastReadTs || 0;
+        const dismissed = new Set(me.dismissedNotif || []);
+        const clearedTs = me.notifClearedTs || 0;
         // Tugas kelompok hanya relevan utk anggota yang ditandai; tugas individu utk semua peserta matkul.
         const relevant = n => {
           if (isManager) return true;
@@ -465,7 +496,7 @@ const server = http.createServer(async (req, res) => {
           if (n.type === "tugas" && n.tipe === "kelompok" && Array.isArray(n.anggota) && n.anggota.length) return n.anggota.some(a => a.id === me.id);
           return true;
         };
-        const events = (DB.notifications || []).filter(relevant).sort((a, b) => b.ts - a.ts).slice(0, 50)
+        const events = (DB.notifications || []).filter(relevant).filter(n => n.ts > clearedTs && !dismissed.has(n.id)).sort((a, b) => b.ts - a.ts).slice(0, 50)
           .map(n => ({ id: n.id, ts: n.ts, type: n.type, title: n.title, body: n.body, unread: n.ts > lastRead }));
         const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00").getTime();
         const tugasRelevan = t => {
