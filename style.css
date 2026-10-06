@@ -285,6 +285,13 @@ body {
 .btn.ghost { background: #f1f5fb; color: var(--muted); box-shadow: none; flex: 0 0 auto; }
 .btn.ghost:hover { color: var(--navy); }
 .btn.sm { flex: 0 0 auto; padding: 8px 14px; font-size: .84rem; box-shadow: none; }
+
+/* ---------- Semester group (Jadwal) ---------- */
+.sem-group { margin-bottom: 20px; }
+.sem-head {
+  display: inline-block; background: var(--grad); color: #fff; font-weight: 800; font-size: .82rem;
+  letter-spacing: .3px; padding: 6px 16px; border-radius: 999px; margin: 8px 0 2px; box-shadow: var(--shadow-sm);
+}
 .btn-icon {
   background: #f1f5fb; border: none; color: var(--muted); width: 34px; height: 34px; border-radius: 10px;
   cursor: pointer; font-size: .95rem; display: grid; place-items: center; flex: 0 0 auto;

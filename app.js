@@ -424,18 +424,24 @@ function renderKelompok() {
 }
 function renderJadwal() {
   const today = HARI[(new Date().getDay()+6)%7];
-  let h = secHead("Jadwal Mingguan", "Jadwal kuliah per hari", "jadwal");
+  let h = secHead("Jadwal Mingguan", "Jadwal kuliah per semester", "jadwal");
   if (!store.jadwal.length) return h + emptyHTML("🗓️","Belum ada jadwal.");
-  HARI.forEach(hari => {
-    const items = store.jadwal.filter(j => j.hari === hari).sort((a,b)=>a.mulai.localeCompare(b.mulai));
-    if (!items.length) return;
-    h += `<h3 style="color:var(--navy);margin:14px 0 8px;font-size:.92rem">${hari}${hari===today?" • Hari ini":""}</h3>`;
-    h += items.map(j => `<div class="mcard k-pertemuan">
-      <div class="mcard-head"><div class="mcard-title">${esc(j.matkul)}</div>
-        <div class="mcard-date-badge"><span class="d">${esc(j.mulai)}</span><span class="m">${esc(j.selesai)}</span></div></div>
-      <div class="mcard-meta"><span class="mi"><span class="tag mode">${esc(j.mode||"Luring")}</span></span><span class="mi">📍 ${esc(j.ruang||"-")}</span><span class="mi">👤 ${esc(j.dosen||"-")}</span>
-        ${isManager()?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn-icon" data-edit="jadwal" data-id="${j.id}">✎</button><button class="btn-icon danger" data-del="jadwal" data-id="${j.id}">🗑</button></span>`:""}</div>
-    </div>`).join("");
+  const semesters = [...new Set(store.jadwal.map(j => Number(j.semester)||1))].sort((a,b)=>a-b);
+  semesters.forEach(sem => {
+    const semItems = store.jadwal.filter(j => (Number(j.semester)||1) === sem);
+    h += `<div class="sem-group"><div class="sem-head">Semester ${sem}</div>`;
+    HARI.forEach(hari => {
+      const items = semItems.filter(j => j.hari === hari).sort((a,b)=>a.mulai.localeCompare(b.mulai));
+      if (!items.length) return;
+      h += `<h3 style="color:var(--navy);margin:14px 0 8px;font-size:.92rem">${hari}${hari===today?" • Hari ini":""}</h3>`;
+      h += items.map(j => `<div class="mcard k-pertemuan">
+        <div class="mcard-head"><div class="mcard-title">${esc(j.matkul)}</div>
+          <div class="mcard-date-badge"><span class="d">${esc(j.mulai)}</span><span class="m">${esc(j.selesai)}</span></div></div>
+        <div class="mcard-meta"><span class="mi"><span class="tag mode">${esc(j.mode||"Luring")}</span></span><span class="mi">📍 ${esc(j.ruang||"-")}</span><span class="mi">👤 ${esc(j.dosen||"-")}</span>
+          ${isManager()?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn-icon" data-edit="jadwal" data-id="${j.id}">✎</button><button class="btn-icon danger" data-del="jadwal" data-id="${j.id}">🗑</button></span>`:""}</div>
+      </div>`).join("");
+    });
+    h += `</div>`;
   });
   return h;
 }
@@ -635,6 +641,7 @@ function openForm(tipe, id, preset) {
   let b = "";
   if (tipe === "jadwal") b = `
     <div class="field"><label>Mata Kuliah</label><select name="matkul">${matkulOptions(data.matkul)}</select></div>
+    <div class="field"><label>Semester</label><select name="semester">${[1,2,3,4,5,6].map(s=>`<option ${String(data.semester||1)===String(s)?"selected":""}>${s}</option>`).join("")}</select></div>
     <div class="field"><label>Hari</label><select name="hari">${HARI.map(h=>`<option ${data.hari===h?"selected":""}>${h}</option>`).join("")}</select></div>
     <div class="field-row"><div class="field"><label>Mulai</label><input type="time" name="mulai" value="${esc(data.mulai||"08:00")}"></div><div class="field"><label>Selesai</label><input type="time" name="selesai" value="${esc(data.selesai||"10:00")}"></div></div>
     <div class="field"><label>Mode</label><select name="mode">${["Luring","Daring","Hibrida"].map(m=>`<option ${data.mode===m?"selected":""}>${m}</option>`).join("")}</select></div>
@@ -788,6 +795,7 @@ async function simpanForm(tipe, id) {
   if (tipe==="kelompok" && !f.nama) return toast("Nama kelompok wajib");
   if (tipe==="users") { if (!f.nama || (!id && !f.username)) return toast("Nama & username wajib"); if (!id && (!f.password || f.password.length<6)) return toast("Password minimal 6 karakter"); }
   if (tipe==="matkul") f.sks = Number(f.sks)||0;
+  if (tipe==="jadwal") f.semester = Number(f.semester)||1;
   if (tipe==="tugas") {
     const cont = document.getElementById("mAnggota");
     f.anggota = (f.tipe === "kelompok" && cont) ? Array.from(cont.querySelectorAll("input:checked")).map(i => ({ id: i.value, nama: i.dataset.nama || "" })) : [];
@@ -844,14 +852,15 @@ function openSubmit(id) {
   const jk = t.jenisKumpul || "submit";
   const perluBerkas = jk !== "presentasi";
   const isKelompok = t.tipe === "kelompok";
+  const perluUpload = perluBerkas && isKelompok; // tugas individu tidak upload di aplikasi
   const jkLabel = { submit:"Submit berkas", presentasi:"Presentasi", keduanya:"Submit + Presentasi" }[jk];
   document.getElementById("modalTitle").textContent = "Kumpulkan Tugas";
   document.getElementById("modalBody").innerHTML = `
     <div class="field"><label>Tugas</label><input value="${esc(t.judul)}" disabled></div>
     <div class="field"><label>Jenis Pengumpulan</label><input value="${jkLabel}" disabled></div>
     ${isKelompok?`<div class="field"><label>Nama Kelompok</label><input name="kelompok" value="${esc(mine.kelompok||"")}" placeholder="Kelompok 1"></div>`:""}
-    ${perluBerkas?`<div class="field"><label>Unggah Berkas (maks 6 MB)</label><div class="file-input-row"><input type="file" id="subFile">${mine.fileOrig?`<span class="file-name-tag">Saat ini: ${esc(mine.fileOrig)}</span>`:""}</div></div>
-    <div class="field"><label>Tautan Jawaban (opsional)</label><input name="link" value="${esc(mine.link||"")}" placeholder="https://…"></div>`:""}
+    ${perluUpload?`<div class="field"><label>Unggah Berkas (maks 6 MB)</label><div class="file-input-row"><input type="file" id="subFile">${mine.fileOrig?`<span class="file-name-tag">Saat ini: ${esc(mine.fileOrig)}</span>`:""}</div></div>`:""}
+    ${perluBerkas?`<div class="field"><label>Tautan Jawaban (opsional)</label><input name="link" value="${esc(mine.link||"")}" placeholder="https://…"></div>`:""}
     <div class="field"><label>Catatan untuk Dosen</label><textarea name="catatan">${esc(mine.catatan||"")}</textarea></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:.88rem;margin-bottom:10px"><input type="checkbox" id="subDone" ${mine.selesai?"checked":""} style="width:auto"> ${jk==="presentasi"?"Tandai sudah presentasi":"Tandai selesai"}</label>
     <div class="modal-actions"><button class="btn ghost" id="fCancel">Batal</button><button class="btn gold" id="fSave">Kirim</button></div>`;
