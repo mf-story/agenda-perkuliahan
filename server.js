@@ -177,6 +177,7 @@ function authUser(req) {
   return DB.users.find(u => u.id === payload.uid) || null;
 }
 function publicUser(u) { return { id: u.id, nama: u.nama, username: u.username, role: u.role }; }
+function userName(id) { const u = DB.users.find(x => x.id === id); return u ? u.nama : ""; }
 function pushNotif(type, title, body, matkul, meta) {
   if (!Array.isArray(DB.notifications)) DB.notifications = [];
   DB.notifications.push({ id: uid(), ts: Date.now(), type, title, body: body || "", matkul: matkul || "", ...(meta || {}) });
@@ -352,7 +353,7 @@ const server = http.createServer(async (req, res) => {
         const out = list.map(p => {
           const presenters = DB.tugas
             .filter(t => t.pertemuanId === p.id && (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya"))
-            .flatMap(t => (t.anggota || []).map(a => a.nama))
+            .flatMap(t => (t.anggota || []).map(a => userName(a.id) || a.nama))
             .filter(Boolean);
           return { ...p, presentasi: [...new Set(presenters)] };
         });
@@ -397,7 +398,8 @@ const server = http.createServer(async (req, res) => {
           const subs = DB.submissions.filter(sb => sb.tugasId === t.id && ids.includes(sb.studentId));
           const done = subs.filter(sb => sb.selesai).length;
           const mine = DB.submissions.find(sb => sb.tugasId === t.id && sb.studentId === me.id) || null;
-          return { ...t, progres: { done, total: ids.length, submitted: subs.length }, mine: mine ? publicSub(mine) : null };
+          const anggota = (t.anggota || []).map(a => ({ id: a.id, nama: userName(a.id) || a.nama }));
+          return { ...t, anggota, progres: { done, total: ids.length, submitted: subs.length }, mine: mine ? publicSub(mine) : null };
         });
         return sendJSON(res, 200, out);
       }
@@ -460,7 +462,7 @@ const server = http.createServer(async (req, res) => {
     // ---------- CHAT (obrolan kelas) ----------
     if (resource === "chat") {
       if (method === "GET") {
-        const list = (DB.chat || []).slice(-200).map(m => ({ id: m.id, userId: m.userId, nama: m.nama, role: m.role, text: m.text, ts: m.ts }));
+        const list = (DB.chat || []).slice(-200).map(m => ({ id: m.id, userId: m.userId, nama: userName(m.userId) || m.nama, role: (DB.users.find(u => u.id === m.userId) || {}).role || m.role, text: m.text, ts: m.ts }));
         return sendJSON(res, 200, list);
       }
       if (method === "POST") {
