@@ -253,6 +253,16 @@ const server = http.createServer(async (req, res) => {
     const id = parts[2];
     const body = (method === "POST" || method === "PUT" || method === "PATCH") ? await readBody(req) : {};
 
+    // Ganti sandi sendiri (semua pengguna login)
+    if (pathname === "/api/me/password" && method === "POST") {
+      const current = String(body.current || "");
+      const baru = String(body.baru || "");
+      if (baru.length < 6) return sendJSON(res, 400, { error: "Sandi baru minimal 6 karakter" });
+      if (!verifyPassword(current, me.password)) return sendJSON(res, 400, { error: "Sandi lama salah" });
+      me.password = hashPassword(baru); saveDB();
+      return sendJSON(res, 200, { ok: true });
+    }
+
     // ---------- USERS (admin) ----------
     if (resource === "users") {
       if (!isAdmin) return sendJSON(res, 403, { error: "Hanya admin yang dapat mengelola pengguna" });
@@ -364,7 +374,12 @@ const server = http.createServer(async (req, res) => {
       }
       if (method === "GET") {
         let list = DB.tugas;
-        if (!isManager) list = list.filter(t => enrolled(me.id, t.matkul));
+        // Mahasiswa: hanya tugas matkul yang diikuti; tugas kelompok hanya jika ditandai sebagai anggota.
+        if (!isManager) list = list.filter(t => {
+          if (!enrolled(me.id, t.matkul)) return false;
+          if (t.tipe === "kelompok" && Array.isArray(t.anggota) && t.anggota.length) return t.anggota.some(a => a.id === me.id);
+          return true;
+        });
         const out = list.map(t => {
           const ids = enrolledIds(t.matkul);
           const subs = DB.submissions.filter(sb => sb.tugasId === t.id && ids.includes(sb.studentId));

@@ -1,7 +1,7 @@
 /* Service Worker — Agenda Perkuliahan
    Shell di-cache agar cepat & bisa dibuka saat offline.
    API (/api/*) TIDAK pernah di-cache (selalu ambil data terbaru). */
-const VERSION = "agenda-v1";
+const VERSION = "agenda-v2";
 const SHELL = ["./", "./index.html", "./style.css", "./app.js", "./logo-unismuh.png", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -31,11 +31,11 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Aset statis: cache-first.
+  // Aset statis: network-first agar pembaruan selalu tampil; cache hanya fallback saat offline.
   e.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req).then((r) => {
+    fetch(req).then((r) => {
       if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
       return r;
-    }))
+    }).catch(() => caches.match(req))
   );
 });

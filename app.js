@@ -628,14 +628,38 @@ function openAccount() {
     items.unshift(`<button data-go="matkul">📚 Mata Kuliah</button>`);
   }
   if (isAdmin()) items.push(`<button data-go="pengguna">⚙️ Kelola Pengguna</button>`);
+  items.push(`<button id="acPass">🔑 Ganti Sandi</button>`);
   items.push(`<button class="danger" id="acLogout">⎋ Keluar</button>`);
+  const isMhs = me.role === "mahasiswa";
+  const idLabel = isMhs ? "NIM" : "Username";
   document.getElementById("modalBody").innerHTML = `
     <div class="account-head"><div class="account-avatar">${esc(initial(me.nama))}</div>
-      <div><div class="account-name">${esc(me.nama)}</div><div class="account-role"><span class="tag gold">${esc(me.role)}</span></div></div></div>
+      <div><div class="account-name">${esc(me.nama)}</div>
+        <div class="account-id">${idLabel}: <b>${esc(me.username)}</b></div>
+        <div class="account-role"><span class="tag gold">${esc(me.role)}</span></div></div></div>
     <div class="account-actions">${items.join("")}</div>`;
   openModal();
   document.querySelectorAll("#modalBody [data-go]").forEach(b => b.onclick = () => { closeModal(); setView(b.dataset.go); });
+  document.getElementById("acPass").onclick = openGantiSandi;
   document.getElementById("acLogout").onclick = logout;
+}
+function openGantiSandi() {
+  document.getElementById("modalTitle").textContent = "Ganti Sandi";
+  document.getElementById("modalBody").innerHTML = `
+    <div class="field"><label>Sandi Lama</label><input type="password" name="current" autocomplete="current-password"></div>
+    <div class="field"><label>Sandi Baru (min 6 karakter)</label><input type="password" name="baru" autocomplete="new-password"></div>
+    <div class="field"><label>Ulangi Sandi Baru</label><input type="password" name="baru2" autocomplete="new-password"></div>
+    <div class="modal-actions"><button class="btn ghost" id="fCancel">Batal</button><button class="btn" id="fSave">Simpan</button></div>`;
+  openModal();
+  document.getElementById("fCancel").onclick = closeModal;
+  document.getElementById("fSave").onclick = async () => {
+    const g = s => { const el = document.querySelector('#modalBody [name="'+s+'"]'); return el ? el.value : ""; };
+    const current = g("current"), baru = g("baru"), baru2 = g("baru2");
+    if (baru.length < 6) return toast("Sandi baru minimal 6 karakter");
+    if (baru !== baru2) return toast("Konfirmasi sandi tidak cocok");
+    try { await api("/me/password", "POST", { current, baru }); closeModal(); toast("Sandi berhasil diganti ✓"); }
+    catch (e) { toast(e.message); }
+  };
 }
 
 /* ============================================================
@@ -896,8 +920,17 @@ async function kirimTugas(id) {
 }
 
 /* ---------- Modal ---------- */
-function openModal() { document.getElementById("modalOverlay").hidden = false; }
-function closeModal() { document.getElementById("modalOverlay").hidden = true; }
+function openModal() {
+  document.getElementById("modalOverlay").hidden = false;
+  if (!window._modalState) { history.pushState({ agendaModal: true }, ""); window._modalState = true; }
+}
+function closeModal() {
+  document.getElementById("modalOverlay").hidden = true;
+  if (window._modalState) { window._modalState = false; history.back(); }
+}
+window.addEventListener("popstate", () => {
+  if (window._modalState) { window._modalState = false; document.getElementById("modalOverlay").hidden = true; }
+});
 
 /* ============================================================
    Init

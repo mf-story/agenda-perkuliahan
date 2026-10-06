@@ -89,7 +89,7 @@ body {
 .notif-time { font-size: .72rem; color: var(--muted); margin-top: 3px; }
 
 /* ---------- Main ---------- */
-.app-main { padding: 14px 14px 24px; max-width: 760px; margin: 0 auto; }
+.app-main { padding: 14px 14px 28px; max-width: 760px; margin: 0 auto; overflow-x: hidden; }
 
 /* ---------- Stat bar ---------- */
 .stat-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
@@ -117,8 +117,8 @@ body {
   background: var(--card); font-size: .9rem; color: var(--ink); box-shadow: var(--shadow-sm);
 }
 .search-wrap input:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
-.chips { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.chips::-webkit-scrollbar { height: 4px; }
+.chips { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-padding-left: 2px; }
+.chips::-webkit-scrollbar { height: 0; display: none; }
 .mk-filter {
   width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--card); font-size: .88rem; color: var(--ink); box-shadow: var(--shadow-sm); font-family: inherit;
@@ -410,6 +410,8 @@ body {
 .account-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; background: var(--grad); border-radius: 18px; padding: 16px; box-shadow: 0 8px 22px rgba(15,42,74,.22); }
 .account-avatar { width: 56px; height: 56px; border-radius: 50%; flex: 0 0 auto; background: var(--grad-gold); color: var(--navy); font-weight: 800; font-size: 1.25rem; display: grid; place-items: center; }
 .account-name { font-size: 1.05rem; font-weight: 700; color: #fff; }
+.account-id { font-size: .8rem; color: rgba(255,255,255,.88); margin-top: 3px; }
+.account-id b { color: #fff; letter-spacing: .3px; }
 .account-role { margin-top: 6px; }
 .account-actions { display: flex; flex-direction: column; gap: 8px; }
 .account-actions button {
