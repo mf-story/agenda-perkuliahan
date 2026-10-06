@@ -344,7 +344,15 @@ const server = http.createServer(async (req, res) => {
       if (method === "GET") {
         let list = DB.pertemuan;
         if (!isManager) list = list.filter(p => enrolled(me.id, p.matkul));
-        return sendJSON(res, 200, list);
+        // Sertakan daftar penyaji (dari tugas presentasi) agar tampil ke semua peserta.
+        const out = list.map(p => {
+          const presenters = DB.tugas
+            .filter(t => t.pertemuanId === p.id && (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya"))
+            .flatMap(t => (t.anggota || []).map(a => a.nama))
+            .filter(Boolean);
+          return { ...p, presentasi: [...new Set(presenters)] };
+        });
+        return sendJSON(res, 200, out);
       }
       if (!isManager) return sendJSON(res, 403, { error: "Hanya dosen/admin yang dapat mengelola pertemuan" });
       const shape = () => ({ matkul: s(body.matkul), pertemuanKe: Number(body.pertemuanKe) || 1, tanggal: s(body.tanggal), waktu: s(body.waktu), selesai: s(body.selesai), topik: s(body.topik), pengampu: s(body.pengampu), catatan: s(body.catatan), mode: body.mode === "luring" ? "luring" : "daring", ruangan: s(body.ruangan), link: s(body.link), meetId: s(body.meetId), passcode: s(body.passcode) });

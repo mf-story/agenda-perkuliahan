@@ -281,13 +281,14 @@ function cardHTML(e) {
   const badge = d ? `<div class="mcard-date-badge"><span class="d">${d.getDate()}</span><span class="m">${BULAN[d.getMonth()]}</span></div>` : "";
   let flags = "";
   if (e.kind === "pertemuan") {
+    const p = store.pertemuan.find(x => x.id === e.id);
+    const presNames = (p && p.presentasi) || [];
+    if (presNames.length) flags += `<span class="flag pres">🎤 Presentasi: ${esc(presNames.join(", "))}</span>`;
     const tP = store.tugas.filter(t => t.pertemuanId === e.id);
     if (!isManager()) {
-      const pres = tP.some(t => (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya") && (t.anggota || []).some(a => a.id === me.id));
       const myTasks = tP.filter(t => (t.jenisKumpul || "submit") !== "presentasi" && !tugasSelesai(t));
       const adaIndividu = myTasks.some(t => (t.tipe || "individu") === "individu");
       const adaKelompok = myTasks.some(t => t.tipe === "kelompok");
-      if (pres) flags += `<span class="flag pres">🎤 Giliran Presentasi</span>`;
       if (adaIndividu) flags += `<span class="flag tugas">📌 Tugas Individu</span>`;
       if (adaKelompok) flags += `<span class="flag tugas">📌 Tugas Kelompok</span>`;
     } else if (tP.length) {
@@ -556,6 +557,7 @@ function openDetail(kind, id) {
           ? infoRow("📍","Ruangan",esc(p.ruangan||"-"))
           : infoRow("💻","Mode","Daring") + (p.link?infoRow("🔗","Link",`<a class="file-link" href="${esc(p.link)}" target="_blank" rel="noopener">Buka Meeting</a>`):"") + (p.meetId?infoRow("🆔","Meeting ID",esc(p.meetId)):"") + (p.passcode?infoRow("🔑","Passcode",esc(p.passcode)):"")}
         ${p.pengampu?infoRow("👤","Dosen",esc(p.pengampu)):""}
+        ${(p.presentasi && p.presentasi.length)?infoRow("🎤","Presentasi",esc(p.presentasi.join(", "))):""}
         ${p.catatan?infoRow("📝","Catatan",esc(p.catatan)):""}
       </div>
       <div class="detail-sec"><h4>Tugas Pertemuan</h4>
