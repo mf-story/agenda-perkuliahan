@@ -191,6 +191,9 @@ body {
 .flag { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; }
 .flag.tugas { background: #fef3c7; color: #92600a; border-color: #f3dfa0; }
 .flag.pres { background: #e0edff; color: #1d4ed8; border-color: #c7dbfb; }
+.flag.batal { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+.mcard.is-batal { border-left-color: var(--red); opacity: .9; }
+.mcard.is-batal .mcard-title { text-decoration: line-through; text-decoration-color: rgba(185,28,28,.6); }
 .mcard-meta .mi { display: inline-flex; align-items: center; gap: 5px; }
 .tag {
   display: inline-block; font-size: .68rem; font-weight: 700; padding: 3px 9px; border-radius: 999px;

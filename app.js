@@ -423,6 +423,7 @@ function renderAgenda() {
 function cardHTML(e) {
   const d = e.date ? new Date(e.date + "T00:00") : null;
   const past = e.date && selisihHari(e.date) < 0;
+  const batal = e.kind === "pertemuan" && e.raw && e.raw.status === "batal";
   const badge = d ? `<div class="mcard-date-badge"><span class="d">${d.getDate()}</span><span class="m">${BULAN[d.getMonth()]}</span></div>` : "";
   let flags = "";
   if (e.kind === "pertemuan") {
@@ -440,10 +441,11 @@ function cardHTML(e) {
       flags += `<span class="flag tugas">📌 ${tP.length} Tugas</span>`;
     }
   }
+  if (batal) flags = `<span class="flag batal">🚫 Ditiadakan${e.raw.statusNote?" · "+esc(e.raw.statusNote):""}</span>` + flags;
   const meta = e.kind === "pertemuan"
     ? `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.mode==="luring" ? (e.ruangan?`<span class="mi">📍 ${esc(e.ruangan)}</span>`:"") : `<span class="mi">💻 Daring</span>`}${e.dosen?`<span class="mi">👤 ${esc(e.dosen)}</span>`:""}${e.topik?`<span class="mi">📖 ${esc(e.topik)}</span>`:""}`
     : `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.kategori==="Tugas"&&e.tipe?`<span class="mi"><span class="badge ${e.tipe==="kelompok"?"sedang":"rendah"}">${e.tipe==="kelompok"?"Kelompok":"Individu"}</span></span>`:""}${e.lokasi?`<span class="mi">📍 ${esc(e.lokasi)}</span>`:""}${e.owner?`<span class="mi">✍ ${esc(e.owner)}</span>`:""}`;
-  return `<div class="mcard k-${past?"selesai":e.kind}" data-detail="${e.kind}:${e.id}">
+  return `<div class="mcard k-${past?"selesai":e.kind}${batal?" is-batal":""}" data-detail="${e.kind}:${e.id}">
     <div class="mcard-head">
       <div class="mcard-headmain"><span class="pill">${esc(e.label)}</span><div class="mcard-title">${esc(e.title)}</div></div>
       ${badge}
@@ -759,6 +761,16 @@ async function hapus(tipe, id) {
   try { await api("/"+tipe+"/"+id, "DELETE"); await reload(tipe); if (tipe==="pertemuan") await reload("tugas"); closeModal(); updateChrome(); render(); toast(`${nama} dihapus`); }
   catch (e) { toast(e.message); }
 }
+async function togglePertemuanStatus(p) {
+  const makeBatal = p.status !== "batal";
+  let note = "";
+  if (makeBatal) { const r = prompt("Alasan ditiadakan (opsional), mis. 'Dosen berhalangan':", p.statusNote || ""); if (r === null) return; note = r.trim(); }
+  try {
+    await api(`/pertemuan/${p.id}/status`, "PUT", { status: makeBatal ? "batal" : "", statusNote: note });
+    await reload("pertemuan"); closeModal(); updateChrome(); render(); loadNotif();
+    toast(makeBatal ? "Ditandai ditiadakan 🚫" : "Pertemuan diaktifkan kembali ✓");
+  } catch (e) { toast(e.message); }
+}
 
 /* ============================================================
    Detail sheet
@@ -775,6 +787,7 @@ function openDetail(kind, id) {
       <div class="detail-hero">${dateBadge(p.tanggal)}
         <div><div class="dh-title">Pertemuan ${esc(p.pertemuanKe)}</div><div class="dh-sub">${esc(p.matkul)}</div></div></div>
       <div class="info-list">
+        ${p.status==="batal"?infoRow("🚫","Status",`<b style="color:var(--red)">Ditiadakan</b>${p.statusNote?" · "+esc(p.statusNote):""}`):""}
         ${p.topik?infoRow("📖","Topik",esc(p.topik)):""}
         ${infoRow("🗓️","Tanggal",fmtTanggal(p.tanggal)||"-")}
         ${infoRow("🕑","Waktu",esc(jamRange(p.waktu,p.selesai)||"-"))}
@@ -796,7 +809,7 @@ function openDetail(kind, id) {
       </div>
       <div class="modal-actions">
         <button class="btn gold" data-addtugas="${p.id}" data-mk="${esc(p.matkul)}">＋ Tambah Tugas</button>
-        ${isManager()?`<button class="btn" id="dEdit">✎ Edit</button><button class="btn ghost" id="dDel">Hapus</button>`:""}
+        ${isManager()?`<button class="btn ${p.status==="batal"?"ghost":""}" id="dStatus">${p.status==="batal"?"↺ Aktifkan kembali":"🚫 Tandai Ditiadakan"}</button><button class="btn" id="dEdit">✎ Edit</button><button class="btn ghost" id="dDel">Hapus</button>`:""}
       </div>`;
     openModal();
     document.querySelector('[data-addtugas]').onclick = () => openForm("tugas", null, { pertemuanId: p.id, matkul: p.matkul });
@@ -804,6 +817,7 @@ function openDetail(kind, id) {
     if (isManager()) {
       document.getElementById("dEdit").onclick = () => openForm("pertemuan", p.id);
       document.getElementById("dDel").onclick = () => hapus("pertemuan", p.id);
+      document.getElementById("dStatus").onclick = () => togglePertemuanStatus(p);
     }
   } else {
     const a = store.agenda.find(x => x.id === id); if (!a) return;

@@ -369,6 +369,17 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 200, out);
       }
       if (!isManager) return sendJSON(res, 403, { error: "Hanya dosen/admin yang dapat mengelola pertemuan" });
+      // Tandai pertemuan ditiadakan / dosen tidak masuk: PUT /api/pertemuan/:id/status
+      if (parts[3] === "status") {
+        const i = DB.pertemuan.findIndex(x => x.id === id);
+        if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
+        if (method === "PUT") {
+          DB.pertemuan[i].status = body.status === "batal" ? "batal" : "";
+          DB.pertemuan[i].statusNote = s(body.statusNote || "");
+          if (DB.pertemuan[i].status === "batal") pushNotif("pertemuan", "Pertemuan ditiadakan", `Pertemuan ${DB.pertemuan[i].pertemuanKe} — ${DB.pertemuan[i].matkul}${DB.pertemuan[i].statusNote ? " (" + DB.pertemuan[i].statusNote + ")" : ""}`, DB.pertemuan[i].matkul);
+          saveDB(); return sendJSON(res, 200, DB.pertemuan[i]);
+        }
+      }
       const shape = () => ({ matkul: s(body.matkul), pertemuanKe: Number(body.pertemuanKe) || 1, tanggal: s(body.tanggal), waktu: s(body.waktu), selesai: s(body.selesai), topik: s(body.topik), pengampu: s(body.pengampu), catatan: s(body.catatan), mode: body.mode === "luring" ? "luring" : "daring", ruangan: s(body.ruangan), link: s(body.link), meetId: s(body.meetId), passcode: s(body.passcode) });
       if (method === "POST") { if (!body.matkul) return sendJSON(res, 400, { error: "Mata kuliah wajib" }); const it = { id: uid(), ...shape() }; DB.pertemuan.push(it); pushNotif("pertemuan", "Pertemuan baru", `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, it.matkul); saveDB(); return sendJSON(res, 201, it); }
       if (method === "PUT") { const i = DB.pertemuan.findIndex(x => x.id === id); if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" }); DB.pertemuan[i] = { ...DB.pertemuan[i], ...shape() }; saveDB(); return sendJSON(res, 200, DB.pertemuan[i]); }
