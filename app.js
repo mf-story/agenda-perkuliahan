@@ -18,6 +18,7 @@ let agendaType = "semua";                // semua|pertemuan|kegiatan
 let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
 let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
 let filterMhs = "";                       // filter per mahasiswa (admin/dosen) di Agenda & Tugas
+let chatChannel = "kelas";                // channel obrolan aktif (kelas | dm:.. | tugas:..)
 let deferredPrompt = null;                // event beforeinstallprompt (pasang PWA)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
@@ -230,7 +231,7 @@ async function pollUpdates() {
     if (newest) lastNotifTs = Math.max(lastNotifTs, newest);
   } catch {}
   try {
-    const chat = await api("/chat"); store.chat = chat;
+    const chat = await api("/chat?channel=" + encodeURIComponent(chatChannel)); store.chat = chat;
     if (currentView === "chat") updateChatList();
     const newest = chat.length ? chat[chat.length - 1].ts : 0;
     const viewingChat = currentView === "chat" && document.visibilityState === "visible";
@@ -295,6 +296,7 @@ async function loadData() {
     Object.assign(store, { matkul, jadwal, tugas, agenda, catatan, pertemuan, kelompok });
     if (isAdmin()) { try { store.users = await api("/users"); } catch {} }
     try { store.mahasiswa = await api("/mahasiswa"); } catch {}
+    try { store.directory = await api("/directory"); } catch {}
   } catch (e) { toast(e.message); }
 }
 async function reload(r) { try { store[r === "users" ? "users" : r] = await api("/" + r); } catch (e) { toast(e.message); } }
@@ -587,14 +589,29 @@ function subListHTML(id) {
 }
 
 /* ============================================================
-   CHAT (obrolan kelas)
+   CHAT (multi-channel: kelas / grup tugas / pesan pribadi)
    ============================================================ */
+function channelName(id) {
+  if (!id || id === "kelas") return "Kelas 26 B";
+  const c = (store._channels || []).find(x => x.id === id);
+  if (c) return c.name;
+  if (id.startsWith("dm:")) { const other = id.slice(3).split(":").find(x => x !== (me && me.id)); const u = (store.directory || []).find(x => x.id === other); return u ? u.nama : "Pesan pribadi"; }
+  if (id.startsWith("tugas:")) { const t = (store.tugas || []).find(x => x.id === id.slice(6)); return t ? t.judul : "Grup tugas"; }
+  return "Obrolan";
+}
+function channelIcon(type) { return type === "dm" ? "👤" : type === "tugas" ? "📋" : "🏫"; }
+function channelsHTML() {
+  let chans = store._channels || [{ id: "kelas", type: "kelas", name: "Kelas 26 B" }];
+  if (!chans.some(c => c.id === chatChannel)) chans = chans.concat([{ id: chatChannel, type: chatChannel.startsWith("dm:") ? "dm" : "tugas", name: channelName(chatChannel) }]);
+  return chans.map(c => `<button class="chchip ${c.id === chatChannel ? "is-active" : ""}" data-chan="${esc(c.id)}">${channelIcon(c.type)} ${esc(c.name)}</button>`).join("");
+}
 function renderChat() {
   const msgs = store.chat || [];
   const list = msgs.length ? msgs.map(chatBubble).join("") : `<div class="chat-empty">${emptyHTML("💬","Belum ada pesan. Mulai percakapan!")}</div>`;
   return `<div class="chat-wrap">
-    <div class="chat-head"><div><h2>Obrolan Kelas</h2><div class="sub">${msgs.length} pesan • Kelas 26 B</div></div>
+    <div class="chat-head"><div><h2 id="chatTitle">${esc(channelName(chatChannel))}</h2><div class="sub">${msgs.length} pesan</div></div>
       <button class="round-btn" id="chatReload" title="Muat ulang">⟳</button></div>
+    <div class="chat-channels"><div class="chchips" id="chatChips">${channelsHTML()}</div><button class="chchip new" id="chatNewDM" title="Pesan pribadi">＋ DM</button></div>
     <div class="chat-online" id="chatOnline" hidden></div>
     <div class="chat-list" id="chatList">${list}</div>
     <form class="chat-composer" id="chatForm" autocomplete="off">
@@ -622,9 +639,42 @@ function chatTime(ts) {
   return d >= today ? jam : d.toLocaleDateString("id-ID",{day:"numeric",month:"short"}) + " " + jam;
 }
 async function loadChat() {
-  try { store.chat = await api("/chat"); } catch (e) {}
+  try { store._channels = await api("/channels"); } catch (e) {}
+  try { store.chat = await api("/chat?channel=" + encodeURIComponent(chatChannel)); } catch (e) {}
   try { store._online = await api("/online"); } catch (e) {}
-  if (currentView === "chat") { updateChatList(); renderOnline(); }
+  if (currentView === "chat") { updateChatList(); renderChannels(); renderOnline(); }
+}
+function setChannel(ch) {
+  if (ch === chatChannel) return;
+  chatChannel = ch; store.chat = [];
+  render(); loadChat();
+  const ci = document.getElementById("chatInput"); if (ci) ci.focus();
+}
+function renderChannels() {
+  const chips = document.getElementById("chatChips"); if (chips) { chips.innerHTML = channelsHTML(); bindView(); }
+  const h = document.getElementById("chatTitle"); if (h) h.textContent = channelName(chatChannel);
+}
+function dmChannelId(a, b) { return "dm:" + [a, b].sort().join(":"); }
+function openDMPicker() {
+  const list = (store.directory || []).filter(u => u.id !== me.id).sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+  document.getElementById("modalTitle").textContent = "Pesan Pribadi";
+  document.getElementById("modalBody").innerHTML = `
+    <div class="field"><label>Pilih pengguna untuk diajak mengobrol</label></div>
+    <input id="dmSearch" class="picker-search" placeholder="🔎 Cari nama / NIM…" autocomplete="off">
+    <div id="dmList" style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px">
+      ${list.map(u => `<button class="dm-pick" data-uid="${esc(u.id)}" style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 8px;border:none;background:none;border-bottom:1px solid #f1f5fb;font-size:.9rem;cursor:pointer">
+        <span class="chat-av">${esc(initial(u.nama))}</span><span><b>${esc(u.nama)}</b> <span style="color:var(--muted);font-size:.76rem">@${esc(u.username)}${u.role!=="mahasiswa"?" · "+esc(u.role):""}</span></span></button>`).join("") || '<div class="progress-meta" style="padding:10px">Tidak ada pengguna.</div>'}
+    </div>`;
+  openModal();
+  const dmSearch = document.getElementById("dmSearch");
+  if (dmSearch) dmSearch.oninput = () => { const q = dmSearch.value.toLowerCase().trim(); document.querySelectorAll("#dmList .dm-pick").forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? "" : "none"; }); };
+  document.querySelectorAll("#dmList .dm-pick").forEach(b => b.onclick = () => {
+    const uid2 = b.dataset.uid; const u = (store.directory || []).find(x => x.id === uid2);
+    const ch = dmChannelId(me.id, uid2);
+    store._channels = store._channels || [];
+    if (!store._channels.some(c => c.id === ch)) store._channels.push({ id: ch, type: "dm", name: u ? u.nama : "Pengguna" });
+    closeModal(); setChannel(ch);
+  });
 }
 function renderOnline() {
   const el = document.getElementById("chatOnline"); if (!el) return;
@@ -638,7 +688,7 @@ function updateChatList() {
   const el = document.getElementById("chatList"); if (!el) return;
   const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   el.innerHTML = (store.chat||[]).length ? (store.chat).map(chatBubble).join("") : `<div class="chat-empty">${emptyHTML("💬","Belum ada pesan. Mulai percakapan!")}</div>`;
-  const sub = document.querySelector(".chat-head .sub"); if (sub) sub.textContent = `${(store.chat||[]).length} pesan • Kelas 26 B`;
+  const sub = document.querySelector(".chat-head .sub"); if (sub) sub.textContent = `${(store.chat||[]).length} pesan`;
   bindView();
   if (atBottom) el.scrollTop = el.scrollHeight;
 }
@@ -647,7 +697,7 @@ async function sendChat() {
   const input = document.getElementById("chatInput"); if (!input) return;
   const text = input.value.trim(); if (!text) return;
   input.value = "";
-  try { await api("/chat", "POST", { text }); await loadChat(); scrollChatBottom(); }
+  try { await api("/chat", "POST", { text, channel: chatChannel }); await loadChat(); scrollChatBottom(); }
   catch (e) { toast(e.message); input.value = text; }
 }
 async function hapusChat(id) {
@@ -748,6 +798,8 @@ function bindView() {
   const chatForm = c.querySelector("#chatForm"); if (chatForm) chatForm.onsubmit = (e) => { e.preventDefault(); sendChat(); };
   const chatReload = c.querySelector("#chatReload"); if (chatReload) chatReload.onclick = () => loadChat();
   c.querySelectorAll("[data-chatdel]").forEach(b => b.onclick = () => hapusChat(b.dataset.chatdel));
+  c.querySelectorAll("[data-chan]").forEach(b => b.onclick = () => setChannel(b.dataset.chan));
+  const chatNewDM = c.querySelector("#chatNewDM"); if (chatNewDM) chatNewDM.onclick = openDMPicker;
   const back = c.querySelector("#backHome"); if (back) back.onclick = () => setView("agenda");
   const cp = c.querySelector("#calPrev"), cn = c.querySelector("#calNext");
   if (cp) cp.onclick = () => { calM--; if (calM<0){calM=11;calY--;} render(); };

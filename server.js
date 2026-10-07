@@ -280,6 +280,28 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, DB.users.filter(u => u.role === "mahasiswa").map(publicUser));
     }
 
+    // Direktori semua pengguna (untuk memilih lawan chat pribadi)
+    if (pathname === "/api/directory" && method === "GET") {
+      return sendJSON(res, 200, DB.users.map(publicUser));
+    }
+
+    // Daftar channel obrolan yang bisa diakses pengguna
+    if (pathname === "/api/channels" && method === "GET") {
+      const out = [{ id: "kelas", type: "kelas", name: "Kelas 26 B" }];
+      const mgr = me.role === "dosen" || me.role === "admin";
+      DB.tugas.forEach(t => {
+        const member = mgr || t.createdBy === me.id || (Array.isArray(t.anggota) && t.anggota.some(a => a.id === me.id));
+        if (t.tipe === "kelompok" && Array.isArray(t.anggota) && t.anggota.length && member) out.push({ id: "tugas:" + t.id, type: "tugas", name: t.judul, matkul: t.matkul || "" });
+      });
+      const dm = new Map();
+      (DB.chat || []).forEach(m => {
+        const ch = m.channel || "";
+        if (ch.startsWith("dm:")) { const ids = ch.slice(3).split(":"); if (ids.includes(me.id)) dm.set(ch, ids.find(x => x !== me.id)); }
+      });
+      dm.forEach((other, ch) => out.push({ id: ch, type: "dm", name: userName(other) || "Pengguna" }));
+      return sendJSON(res, 200, out);
+    }
+
     // Uploaded file download: /api/files/:name
     if (parts[1] === "files" && method === "GET") {
       const name = path.basename(decodeURIComponent(parts[2] || ""));
@@ -530,22 +552,29 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ---------- CHAT (obrolan kelas) ----------
+    // ---------- CHAT (channel: kelas | dm | tugas) ----------
     if (resource === "chat") {
+      const q = new URLSearchParams(qs || "");
       if (method === "GET") {
-        const list = (DB.chat || []).slice(-200).map(m => ({ id: m.id, userId: m.userId, nama: userName(m.userId) || m.nama, role: (DB.users.find(u => u.id === m.userId) || {}).role || m.role, text: m.text, ts: m.ts }));
+        const channel = q.get("channel") || "kelas";
+        if (!canAccessChannel(me, channel)) return sendJSON(res, 403, { error: "Tidak punya akses ke obrolan ini" });
+        const list = (DB.chat || []).filter(m => (m.channel || "kelas") === channel).slice(-200)
+          .map(m => ({ id: m.id, channel: m.channel || "kelas", userId: m.userId, nama: userName(m.userId) || m.nama, role: (DB.users.find(u => u.id === m.userId) || {}).role || m.role, text: m.text, ts: m.ts }));
         return sendJSON(res, 200, list);
       }
       if (method === "POST") {
         const text = String(body.text || "").trim();
+        const channel = String(body.channel || "kelas");
         if (!text) return sendJSON(res, 400, { error: "Pesan kosong" });
         if (text.length > 2000) return sendJSON(res, 400, { error: "Pesan terlalu panjang (maks 2000 karakter)" });
+        if (!canAccessChannel(me, channel)) return sendJSON(res, 403, { error: "Tidak punya akses ke obrolan ini" });
         if (!Array.isArray(DB.chat)) DB.chat = [];
-        const msg = { id: uid(), userId: me.id, nama: me.nama, role: me.role, text, ts: Date.now() };
+        const msg = { id: uid(), channel, userId: me.id, nama: me.nama, role: me.role, text, ts: Date.now() };
         DB.chat.push(msg);
-        if (DB.chat.length > 500) DB.chat = DB.chat.slice(-500);
+        if (DB.chat.length > 3000) DB.chat = DB.chat.slice(-3000);
         saveDB();
-        sendPushToUsers(DB.users.filter(u => u.id !== me.id).map(u => u.id), { title: "💬 " + me.nama, body: text.slice(0, 160), tag: "chat" });
+        const ctx = channel === "kelas" ? "" : " · " + channelLabel(channel);
+        sendPushToUsers(channelMembers(channel).filter(x => x !== me.id), { title: "💬 " + me.nama + ctx, body: text.slice(0, 160), tag: "chat:" + channel });
         return sendJSON(res, 201, msg);
       }
       if (method === "DELETE") {
@@ -635,6 +664,38 @@ function enrolled(userId, nama) {
   const m = DB.matkul.find(x => x.nama === nama);
   if (!m || !Array.isArray(m.peserta) || m.peserta.length === 0) return true;
   return m.peserta.includes(userId);
+}
+// ---- Channel chat: kelas | dm:<idA>:<idB> | tugas:<tugasId> ----
+function canAccessChannel(user, channel) {
+  if (!channel || channel === "kelas") return true;
+  if (channel.startsWith("dm:")) return channel.slice(3).split(":").includes(user.id);
+  if (channel.startsWith("tugas:")) {
+    const t = DB.tugas.find(x => x.id === channel.slice(6));
+    if (!t) return false;
+    if (user.role === "dosen" || user.role === "admin") return true;
+    if (t.createdBy === user.id) return true;
+    return Array.isArray(t.anggota) && t.anggota.some(a => a.id === user.id);
+  }
+  return false;
+}
+function channelMembers(channel) {
+  if (!channel || channel === "kelas") return DB.users.map(u => u.id);
+  if (channel.startsWith("dm:")) return channel.slice(3).split(":");
+  if (channel.startsWith("tugas:")) {
+    const t = DB.tugas.find(x => x.id === channel.slice(6));
+    if (!t) return [];
+    const ids = new Set((t.anggota || []).map(a => a.id));
+    if (t.createdBy) ids.add(t.createdBy);
+    DB.users.filter(u => u.role !== "mahasiswa").forEach(u => ids.add(u.id));
+    return [...ids];
+  }
+  return [];
+}
+function channelLabel(channel) {
+  if (!channel || channel === "kelas") return "Kelas 26 B";
+  if (channel.startsWith("tugas:")) { const t = DB.tugas.find(x => x.id === channel.slice(6)); return t ? t.judul : "Grup tugas"; }
+  if (channel.startsWith("dm:")) return "Pesan pribadi";
+  return "Obrolan";
 }
 function publicSub(sb) { return { id: sb.id, tugasId: sb.tugasId, studentId: sb.studentId, selesai: sb.selesai, catatan: sb.catatan, kelompok: sb.kelompok || "", link: sb.link || "", fileName: sb.fileName, fileOrig: sb.fileOrig, submittedAt: sb.submittedAt }; }
 

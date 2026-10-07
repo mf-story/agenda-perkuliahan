@@ -515,6 +515,13 @@ body {
 .chat-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex: 0 0 auto; }
 .chat-head h2 { font-size: 1.08rem; color: var(--navy); font-weight: 800; }
 .chat-head .sub { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+.chat-channels { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.chchips { flex: 1 1 auto; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; min-width: 0; }
+.chchips::-webkit-scrollbar { display: none; }
+.chchip { flex: 0 0 auto; background: #fff; border: 1px solid var(--line); color: var(--navy); font-size: .78rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.chchip.is-active { background: var(--grad); border-color: transparent; color: #fff; box-shadow: var(--shadow-sm); }
+.chchip.new { flex: 0 0 auto; background: var(--grad-gold); color: var(--navy); border: none; font-weight: 700; }
+.dm-pick:hover { background: #f1f7ff !important; }
 .chat-online { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .74rem; color: var(--muted); background: #f1f7ff; border: 1px solid #dbe8fb; border-radius: 12px; padding: 7px 11px; margin-bottom: 8px; }
 .chat-online[hidden] { display: none; }
 .chat-online b { color: var(--navy); font-size: .74rem; }
