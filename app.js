@@ -877,6 +877,9 @@ function openAccount() {
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (!isStandalone && (deferredPrompt || isIOS)) items.unshift(`<button id="acInstall">📲 Pasang Aplikasi</button>`);
+  const notifOn = ("Notification" in window) && Notification.permission === "granted";
+  if (("Notification" in window) && Notification.permission !== "granted") items.push(`<button id="acNotif">🔔 Aktifkan Notifikasi</button>`);
+  else if (notifOn) items.push(`<button id="acNotifTest">🔔 Tes Notifikasi</button>`);
   items.push(`<button id="acPass">🔑 Ganti Sandi</button>`);
   items.push(`<button class="danger" id="acLogout">⎋ Keluar</button>`);
   const isMhs = me.role === "mahasiswa";
@@ -890,8 +893,23 @@ function openAccount() {
   openModal();
   document.querySelectorAll("#modalBody [data-go]").forEach(b => b.onclick = () => { closeModal(); setView(b.dataset.go); });
   const acInstall = document.getElementById("acInstall"); if (acInstall) acInstall.onclick = () => promptInstall(isIOS);
+  const acNotif = document.getElementById("acNotif"); if (acNotif) acNotif.onclick = aktifkanNotifikasi;
+  const acNotifTest = document.getElementById("acNotifTest"); if (acNotifTest) acNotifTest.onclick = () => { initAudio(); showSystemNotif("Tes Notifikasi \u2713", "Beginilah notifikasi akan tampil.", "test"); playNotifSound(); toast("Notifikasi tes dikirim"); };
   document.getElementById("acPass").onclick = openGantiSandi;
   document.getElementById("acLogout").onclick = logout;
+}
+async function aktifkanNotifikasi() {
+  initAudio();
+  if (!("Notification" in window)) { toast("Perangkat/browser tidak mendukung notifikasi."); return; }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm === "granted") {
+      showSystemNotif("Notifikasi aktif ✓", "Anda akan menerima pengingat jadwal, tugas, & pesan chat.", "welcome");
+      playNotifSound(); closeModal(); toast("Notifikasi diaktifkan ✓");
+    } else {
+      toast("Izin ditolak. Aktifkan via Pengaturan situs/aplikasi di HP.");
+    }
+  } catch { toast("Gagal meminta izin notifikasi."); }
 }
 async function promptInstall(isIOS) {
   if (deferredPrompt) {
@@ -1192,6 +1210,7 @@ function init() {
   si.oninput = () => { searchTerm = si.value.trim(); if (currentView === "agenda") render(); };
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredPrompt = e; });
   window.addEventListener("appinstalled", () => { deferredPrompt = null; toast("Aplikasi terpasang ✓"); });
+  document.addEventListener("pointerdown", initAudio, { once: true }); // buka kunci audio pada sentuhan pertama
   boot();
 }
 document.addEventListener("DOMContentLoaded", init);
