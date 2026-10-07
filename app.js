@@ -17,6 +17,7 @@ let agendaTime = "pekan";                // pekan|hari|lampau|semua
 let agendaType = "semua";                // semua|pertemuan|kegiatan
 let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
 let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
+let filterMhs = "";                       // filter per mahasiswa (admin/dosen) di Agenda & Tugas
 let deferredPrompt = null;                // event beforeinstallprompt (pasang PWA)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
@@ -30,6 +31,18 @@ const isManager = () => me && (me.role === "dosen" || me.role === "admin");
 function myMatkul() {
   if (isManager()) return store.matkul;
   return store.matkul.filter(m => !Array.isArray(m.peserta) || m.peserta.length === 0 || m.peserta.includes(me.id));
+}
+// Relevansi untuk mahasiswa tertentu (dipakai filter admin/dosen)
+function mhsEnrolled(sid, matkulNama) {
+  const m = store.matkul.find(x => x.nama === matkulNama);
+  if (!m) return true; // matkul umum/tak dikenal -> dianggap untuk semua
+  const p = m.peserta || [];
+  return p.length === 0 || p.includes(sid);
+}
+function tugasForMhs(t, sid) {
+  if (!mhsEnrolled(sid, t.matkul)) return false;
+  if (t.tipe === "kelompok" && Array.isArray(t.anggota) && t.anggota.length) return t.anggota.some(a => a.id === sid);
+  return true;
 }
 
 /* ---------- API ---------- */
@@ -314,6 +327,16 @@ function updateChrome() {
     mkFilter.onchange = () => { if (currentView === "agenda") agendaMatkul = mkFilter.value; else tugasMatkul = mkFilter.value; updateChrome(); render(); };
   } else mkFilter.hidden = true;
 
+  // filter per mahasiswa (hanya admin/dosen, tab Agenda & Tugas)
+  const mhsFilter = document.getElementById("mhsFilter");
+  if ((onAgenda || onTugas) && isManager()) {
+    mhsFilter.hidden = false;
+    const list = [...(store.mahasiswa || [])].sort((a, b) => (a.username || "").localeCompare(b.username || ""));
+    mhsFilter.innerHTML = `<option value="">👤 Semua Mahasiswa</option>` +
+      list.map(u => `<option value="${esc(u.id)}" ${filterMhs === u.id ? "selected" : ""}>${esc(u.nama)} (${esc(u.username)})</option>`).join("");
+    mhsFilter.onchange = () => { filterMhs = mhsFilter.value; updateChrome(); render(); };
+  } else { mhsFilter.hidden = true; }
+
   // chips
   const chips = document.getElementById("chips");
   if (onAgenda) {
@@ -384,6 +407,7 @@ function agendaEvents() {
 function renderAgenda() {
   let ev = agendaEvents();
   if (agendaMatkul) ev = ev.filter(e => e.matkul === agendaMatkul);
+  if (filterMhs) ev = ev.filter(e => e.kind !== "pertemuan" || mhsEnrolled(filterMhs, e.matkul));
   if (agendaType !== "semua") ev = ev.filter(e => e.kind === agendaType);
   if (agendaTime === "pekan") { const [ws, we] = weekBounds(); ev = ev.filter(e => e.date && e.date >= ws && e.date <= we); }
   else if (agendaTime === "hari") ev = ev.filter(e => e.date && selisihHari(e.date) === 0);
@@ -480,6 +504,7 @@ function renderKalender() {
 function renderTugas() {
   let list = [...store.tugas];
   if (tugasMatkul) list = list.filter(t => (t.matkul || "") === tugasMatkul);
+  if (filterMhs) list = list.filter(t => tugasForMhs(t, filterMhs));
   if (!isManager()) {
     if (tugasFilter === "aktif") list = list.filter(t => !tugasSelesai(t));
     else if (tugasFilter === "selesai") list = list.filter(t => tugasSelesai(t));
