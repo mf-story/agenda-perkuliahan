@@ -9,6 +9,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+let webpush = null; try { webpush = require("web-push"); } catch { console.warn("web-push tidak tersedia — push dinonaktifkan"); }
 
 const PORT = process.env.PORT || 8090;
 const ROOT = __dirname;
@@ -16,6 +17,7 @@ const DATA_DIR = path.join(ROOT, "data");
 const UPLOAD_DIR = path.join(ROOT, "uploads");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const SECRET_FILE = path.join(DATA_DIR, ".secret");
+const VAPID_FILE = path.join(DATA_DIR, ".vapid");
 const MAX_BODY = 8 * 1024 * 1024; // 8 MB (termasuk upload base64)
 
 for (const d of [DATA_DIR, UPLOAD_DIR]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
@@ -24,6 +26,16 @@ for (const d of [DATA_DIR, UPLOAD_DIR]) if (!fs.existsSync(d)) fs.mkdirSync(d, {
 let SECRET;
 if (fs.existsSync(SECRET_FILE)) SECRET = fs.readFileSync(SECRET_FILE);
 else { SECRET = crypto.randomBytes(48); fs.writeFileSync(SECRET_FILE, SECRET); }
+
+/* ---------- VAPID (Web Push) ---------- */
+let VAPID = null;
+if (webpush) {
+  try {
+    if (fs.existsSync(VAPID_FILE)) VAPID = JSON.parse(fs.readFileSync(VAPID_FILE, "utf8"));
+    else { VAPID = webpush.generateVAPIDKeys(); fs.writeFileSync(VAPID_FILE, JSON.stringify(VAPID)); }
+    webpush.setVapidDetails("mailto:admin@mf-story.online", VAPID.publicKey, VAPID.privateKey);
+  } catch (e) { console.warn("VAPID gagal diinisialisasi:", e.message); VAPID = null; }
+}
 
 /* ---------- DB ---------- */
 let DB;
@@ -46,6 +58,7 @@ function ensureSeedAccounts() {
   // pastikan koleksi baru ada
   let c2 = false;
   for (const k of ["pertemuan", "kelompok", "notifications", "chat"]) if (!Array.isArray(DB[k])) { DB[k] = []; c2 = true; }
+  if (!Array.isArray(DB.pushSubs)) { DB.pushSubs = []; c2 = true; }
   if (c2) saveNow();
 }
 let saveTimer = null;
@@ -183,6 +196,22 @@ function pushNotif(type, title, body, matkul, meta) {
   DB.notifications.push({ id: uid(), ts: Date.now(), type, title, body: body || "", matkul: matkul || "", ...(meta || {}) });
   if (DB.notifications.length > 300) DB.notifications = DB.notifications.slice(-300);
 }
+// Kirim Web Push ke daftar userId (berjalan walau aplikasi tertutup).
+function sendPushToUsers(userIds, payload) {
+  if (!webpush || !VAPID || !Array.isArray(DB.pushSubs) || !DB.pushSubs.length) return;
+  const set = new Set(userIds);
+  const data = JSON.stringify(payload);
+  const dead = [];
+  const targets = DB.pushSubs.filter(s => set.has(s.userId));
+  Promise.allSettled(targets.map(s =>
+    webpush.sendNotification(s.sub, data).catch(err => {
+      const code = err && err.statusCode;
+      if (code === 404 || code === 410) dead.push(s.endpoint);
+    })
+  )).then(() => {
+    if (dead.length) { DB.pushSubs = DB.pushSubs.filter(s => !dead.includes(s.endpoint)); saveDB(); }
+  });
+}
 
 /* ============================================================
    Static file serving
@@ -277,6 +306,25 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true });
     }
 
+    // ---------- WEB PUSH ----------
+    if (pathname === "/api/vapid" && method === "GET") {
+      return sendJSON(res, 200, { publicKey: VAPID ? VAPID.publicKey : null });
+    }
+    if (pathname === "/api/push/subscribe" && method === "POST") {
+      const sub = body.subscription || body;
+      if (!sub || !sub.endpoint) return sendJSON(res, 400, { error: "Langganan tidak valid" });
+      if (!Array.isArray(DB.pushSubs)) DB.pushSubs = [];
+      DB.pushSubs = DB.pushSubs.filter(s => s.endpoint !== sub.endpoint); // hindari duplikat
+      DB.pushSubs.push({ userId: me.id, endpoint: sub.endpoint, sub, createdAt: Date.now() });
+      saveDB();
+      return sendJSON(res, 200, { ok: true });
+    }
+    if (pathname === "/api/push/unsubscribe" && method === "POST") {
+      const ep = String(body.endpoint || "");
+      if (ep && Array.isArray(DB.pushSubs)) { DB.pushSubs = DB.pushSubs.filter(s => s.endpoint !== ep); saveDB(); }
+      return sendJSON(res, 200, { ok: true });
+    }
+
     // ---------- USERS (admin) ----------
     if (resource === "users") {
       if (!isAdmin) return sendJSON(res, 403, { error: "Hanya admin yang dapat mengelola pengguna" });
@@ -324,7 +372,7 @@ const server = http.createServer(async (req, res) => {
     if (resource === "agenda") {
       if (method === "GET") return sendJSON(res, 200, DB.agenda);
       const shape = () => ({ judul: s(body.judul), kategori: s(body.kategori) || "Umum", tanggal: s(body.tanggal), waktu: s(body.waktu), lokasi: s(body.lokasi), tipe: body.tipe === "kelompok" ? "kelompok" : "individu", anggota: Array.isArray(body.anggota) ? body.anggota.filter(a => a && a.id).map(a => ({ id: String(a.id), nama: String(a.nama || "") })) : [] });
-      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), ownerId: me.id, ownerNama: me.nama }; DB.agenda.push(it); pushNotif("agenda", "Kegiatan baru", it.judul, ""); saveDB(); return sendJSON(res, 201, it); }
+      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), ownerId: me.id, ownerNama: me.nama }; DB.agenda.push(it); pushNotif("agenda", "Kegiatan baru", it.judul, ""); sendPushToUsers(DB.users.filter(u => u.id !== me.id).map(u => u.id), { title: "Kegiatan baru", body: it.judul, tag: "agenda" }); saveDB(); return sendJSON(res, 201, it); }
       const it = DB.agenda.find(x => x.id === id);
       if (!it) return sendJSON(res, 404, { error: "Tidak ditemukan" });
       if (it.ownerId !== me.id && !isManager) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin" });
@@ -376,12 +424,16 @@ const server = http.createServer(async (req, res) => {
         if (method === "PUT") {
           DB.pertemuan[i].status = body.status === "batal" ? "batal" : "";
           DB.pertemuan[i].statusNote = s(body.statusNote || "");
-          if (DB.pertemuan[i].status === "batal") pushNotif("pertemuan", "Pertemuan ditiadakan", `Pertemuan ${DB.pertemuan[i].pertemuanKe} — ${DB.pertemuan[i].matkul}${DB.pertemuan[i].statusNote ? " (" + DB.pertemuan[i].statusNote + ")" : ""}`, DB.pertemuan[i].matkul);
+          if (DB.pertemuan[i].status === "batal") {
+            const _b = `Pertemuan ${DB.pertemuan[i].pertemuanKe} — ${DB.pertemuan[i].matkul}${DB.pertemuan[i].statusNote ? " (" + DB.pertemuan[i].statusNote + ")" : ""}`;
+            pushNotif("pertemuan", "Pertemuan ditiadakan", _b, DB.pertemuan[i].matkul);
+            sendPushToUsers(enrolledIds(DB.pertemuan[i].matkul), { title: "Pertemuan ditiadakan", body: _b, tag: "pertemuan" });
+          }
           saveDB(); return sendJSON(res, 200, DB.pertemuan[i]);
         }
       }
       const shape = () => ({ matkul: s(body.matkul), pertemuanKe: Number(body.pertemuanKe) || 1, tanggal: s(body.tanggal), waktu: s(body.waktu), selesai: s(body.selesai), topik: s(body.topik), pengampu: s(body.pengampu), catatan: s(body.catatan), mode: body.mode === "luring" ? "luring" : "daring", ruangan: s(body.ruangan), link: s(body.link), meetId: s(body.meetId), passcode: s(body.passcode) });
-      if (method === "POST") { if (!body.matkul) return sendJSON(res, 400, { error: "Mata kuliah wajib" }); const it = { id: uid(), ...shape() }; DB.pertemuan.push(it); pushNotif("pertemuan", "Pertemuan baru", `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, it.matkul); saveDB(); return sendJSON(res, 201, it); }
+      if (method === "POST") { if (!body.matkul) return sendJSON(res, 400, { error: "Mata kuliah wajib" }); const it = { id: uid(), ...shape() }; DB.pertemuan.push(it); pushNotif("pertemuan", "Pertemuan baru", `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, it.matkul); sendPushToUsers(enrolledIds(it.matkul), { title: "Pertemuan baru", body: `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, tag: "pertemuan" }); saveDB(); return sendJSON(res, 201, it); }
       if (method === "PUT") { const i = DB.pertemuan.findIndex(x => x.id === id); if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" }); DB.pertemuan[i] = { ...DB.pertemuan[i], ...shape() }; saveDB(); return sendJSON(res, 200, DB.pertemuan[i]); }
       if (method === "DELETE") { DB.pertemuan = DB.pertemuan.filter(x => x.id !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
     }
@@ -425,7 +477,7 @@ const server = http.createServer(async (req, res) => {
       }
       const shape = () => ({ judul: s(body.judul), matkul: s(body.matkul), deadline: s(body.deadline), prioritas: ["tinggi", "sedang", "rendah"].includes(body.prioritas) ? body.prioritas : "sedang", deskripsi: s(body.deskripsi), tipe: body.tipe === "kelompok" ? "kelompok" : "individu", jenisKumpul: ["submit", "presentasi", "keduanya"].includes(body.jenisKumpul) ? body.jenisKumpul : "submit", pertemuanId: s(body.pertemuanId), anggota: Array.isArray(body.anggota) ? body.anggota.filter(a => a && a.id).map(a => ({ id: String(a.id), nama: String(a.nama || "") })) : [] });
       // Semua pengguna boleh membuat & MENGEDIT tugas; hapus hanya pembuat atau dosen/admin.
-      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); saveDB(); return sendJSON(res, 201, it); }
+      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); { const _ids = enrolledIds(it.matkul); const _tg = (it.tipe === "kelompok" && Array.isArray(it.anggota) && it.anggota.length) ? it.anggota.map(a => a.id).filter(x => _ids.includes(x)) : _ids; sendPushToUsers(_tg.filter(x => x !== me.id), { title: "Tugas baru", body: `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, tag: "tugas" }); } saveDB(); return sendJSON(res, 201, it); }
       const ti = DB.tugas.findIndex(x => x.id === id);
       if (ti < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
       if (method === "PUT") { DB.tugas[ti] = { ...DB.tugas[ti], ...shape() }; saveDB(); return sendJSON(res, 200, DB.tugas[ti]); }
@@ -493,6 +545,7 @@ const server = http.createServer(async (req, res) => {
         DB.chat.push(msg);
         if (DB.chat.length > 500) DB.chat = DB.chat.slice(-500);
         saveDB();
+        sendPushToUsers(DB.users.filter(u => u.id !== me.id).map(u => u.id), { title: "💬 " + me.nama, body: text.slice(0, 160), tag: "chat" });
         return sendJSON(res, 201, msg);
       }
       if (method === "DELETE") {

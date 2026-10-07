@@ -119,6 +119,7 @@ async function afterLogin() {
   setView("agenda");
   await loadNotif();
   ensureNotifPermission();
+  if (("Notification" in window) && Notification.permission === "granted") registerPush();
   // Baseline agar tak memberi tahu item lama saat baru masuk.
   lastNotifTs = (notifData.events || []).reduce((m, e) => Math.max(m, e.ts), 0);
   try { store.chat = await api("/chat"); } catch {}
@@ -167,6 +168,26 @@ function playNotifSound() {
 function ensureNotifPermission() {
   if (!("Notification" in window)) return;
   if (Notification.permission === "default") { try { Notification.requestPermission(); } catch {} }
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64); const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+// Daftarkan Web Push agar notifikasi masuk walau aplikasi tertutup.
+async function registerPush() {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const { publicKey } = await api("/vapid");
+    if (!publicKey) return;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+    await api("/push/subscribe", "POST", { subscription: sub });
+  } catch (e) {}
 }
 function showSystemNotif(title, body, tag) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
@@ -904,6 +925,7 @@ async function aktifkanNotifikasi() {
   try {
     const perm = await Notification.requestPermission();
     if (perm === "granted") {
+      registerPush();
       showSystemNotif("Notifikasi aktif ✓", "Anda akan menerima pengingat jadwal, tugas, & pesan chat.", "welcome");
       playNotifSound(); closeModal(); toast("Notifikasi diaktifkan ✓");
     } else {
