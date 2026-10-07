@@ -462,7 +462,7 @@ function cardHTML(e) {
       flags += `<span class="flag tugas">📌 ${tP.length} Tugas</span>`;
     }
   }
-  if (batal) flags = `<span class="flag batal">🚫 Ditiadakan${e.raw.statusNote?" · "+esc(e.raw.statusNote):""}</span>` + flags;
+  if (batal) flags = `<span class="flag batal">🚫 Tidak Masuk${e.raw.statusNote?" · "+esc(e.raw.statusNote):""}</span>` + flags;
   const meta = e.kind === "pertemuan"
     ? `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.mode==="luring" ? (e.ruangan?`<span class="mi">📍 ${esc(e.ruangan)}</span>`:"") : `<span class="mi">💻 Daring</span>`}${e.dosen?`<span class="mi">👤 ${esc(e.dosen)}</span>`:""}${e.topik?`<span class="mi">📖 ${esc(e.topik)}</span>`:""}`
     : `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.kategori==="Tugas"&&e.tipe?`<span class="mi"><span class="badge ${e.tipe==="kelompok"?"sedang":"rendah"}">${e.tipe==="kelompok"?"Kelompok":"Individu"}</span></span>`:""}${e.lokasi?`<span class="mi">📍 ${esc(e.lokasi)}</span>`:""}${e.owner?`<span class="mi">✍ ${esc(e.owner)}</span>`:""}`;
@@ -785,11 +785,11 @@ async function hapus(tipe, id) {
 async function togglePertemuanStatus(p) {
   const makeBatal = p.status !== "batal";
   let note = "";
-  if (makeBatal) { const r = prompt("Alasan ditiadakan (opsional), mis. 'Dosen berhalangan':", p.statusNote || ""); if (r === null) return; note = r.trim(); }
+  if (makeBatal) { const r = prompt("Alasan tidak masuk (opsional), mis. 'Dosen berhalangan':", p.statusNote || ""); if (r === null) return; note = r.trim(); }
   try {
     await api(`/pertemuan/${p.id}/status`, "PUT", { status: makeBatal ? "batal" : "", statusNote: note });
     await reload("pertemuan"); closeModal(); updateChrome(); render(); loadNotif();
-    toast(makeBatal ? "Ditandai ditiadakan 🚫" : "Pertemuan diaktifkan kembali ✓");
+    toast(makeBatal ? "Ditandai tidak masuk 🚫" : "Pertemuan diaktifkan kembali ✓");
   } catch (e) { toast(e.message); }
 }
 
@@ -808,7 +808,7 @@ function openDetail(kind, id) {
       <div class="detail-hero">${dateBadge(p.tanggal)}
         <div><div class="dh-title">Pertemuan ${esc(p.pertemuanKe)}</div><div class="dh-sub">${esc(p.matkul)}</div></div></div>
       <div class="info-list">
-        ${p.status==="batal"?infoRow("🚫","Status",`<b style="color:var(--red)">Ditiadakan</b>${p.statusNote?" · "+esc(p.statusNote):""}`):""}
+        ${p.status==="batal"?infoRow("🚫","Status",`<b style="color:var(--red)">Tidak Masuk</b>${p.statusNote?" · "+esc(p.statusNote):""}`):""}
         ${p.topik?infoRow("📖","Topik",esc(p.topik)):""}
         ${infoRow("🗓️","Tanggal",fmtTanggal(p.tanggal)||"-")}
         ${infoRow("🕑","Waktu",esc(jamRange(p.waktu,p.selesai)||"-"))}
@@ -830,7 +830,7 @@ function openDetail(kind, id) {
       </div>
       <div class="modal-actions">
         <button class="btn gold" data-addtugas="${p.id}" data-mk="${esc(p.matkul)}">＋ Tambah Tugas</button>
-        ${isManager()?`<button class="btn ${p.status==="batal"?"ghost":""}" id="dStatus">${p.status==="batal"?"↺ Aktifkan kembali":"🚫 Tandai Ditiadakan"}</button><button class="btn" id="dEdit">✎ Edit</button><button class="btn ghost" id="dDel">Hapus</button>`:""}
+        ${isManager()?`<button class="btn ${p.status==="batal"?"ghost":""}" id="dStatus">${p.status==="batal"?"↺ Aktifkan kembali":"🚫 Tandai Tidak Masuk"}</button><button class="btn" id="dEdit">✎ Edit</button><button class="btn ghost" id="dDel">Hapus</button>`:""}
       </div>`;
     openModal();
     document.querySelector('[data-addtugas]').onclick = () => openForm("tugas", null, { pertemuanId: p.id, matkul: p.matkul });

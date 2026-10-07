@@ -426,8 +426,8 @@ const server = http.createServer(async (req, res) => {
           DB.pertemuan[i].statusNote = s(body.statusNote || "");
           if (DB.pertemuan[i].status === "batal") {
             const _b = `Pertemuan ${DB.pertemuan[i].pertemuanKe} — ${DB.pertemuan[i].matkul}${DB.pertemuan[i].statusNote ? " (" + DB.pertemuan[i].statusNote + ")" : ""}`;
-            pushNotif("pertemuan", "Pertemuan ditiadakan", _b, DB.pertemuan[i].matkul);
-            sendPushToUsers(enrolledIds(DB.pertemuan[i].matkul), { title: "Pertemuan ditiadakan", body: _b, tag: "pertemuan" });
+            pushNotif("pertemuan", "Pertemuan tidak masuk", _b, DB.pertemuan[i].matkul);
+            sendPushToUsers(enrolledIds(DB.pertemuan[i].matkul), { title: "Pertemuan tidak masuk", body: _b, tag: "pertemuan" });
           }
           saveDB(); return sendJSON(res, 200, DB.pertemuan[i]);
         }
