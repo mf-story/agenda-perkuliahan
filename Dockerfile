@@ -3,7 +3,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependensi (web-push) — manfaatkan cache layer
-COPY package.json ./
+COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 
 # Salin semua berkas aplikasi (termasuk seed-db.json)
