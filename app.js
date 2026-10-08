@@ -548,8 +548,9 @@ function taskHTML(t) {
   const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
   const jkBadge = isPres ? `<span class="tag blue">Presentasi</span>` : "";
   const canDel = isManager() || (me && t.createdBy === me.id);
+  const pertObj = t.pertemuanId && (store.pertemuan || []).find(p => p.id === t.pertemuanId);
   const mkObj = (store.matkul || []).find(m => (m.nama || "") === (t.matkul || ""));
-  const dosenNama = t.dosen || (mkObj && mkObj.dosen) || "";
+  const dosenNama = (pertObj && pertObj.pengampu) || t.dosen || (mkObj && mkObj.dosen) || "";
   let extra = "";
   if (isManager()) {
     const p = t.progres || { done:0,total:0,submitted:0 };
