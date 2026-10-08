@@ -607,7 +607,7 @@ function channelIcon(type) { return type === "dm" ? "👤" : type === "tugas" ? 
 function channelsHTML() {
   let chans = store._channels || [{ id: "kelas", type: "kelas", name: "Kelas 26 B" }];
   if (!chans.some(c => c.id === chatChannel)) chans = chans.concat([{ id: chatChannel, type: chatChannel.startsWith("dm:") ? "dm" : "tugas", name: channelName(chatChannel) }]);
-  return chans.map(c => `<button class="chchip ${c.id === chatChannel ? "is-active" : ""}" data-chan="${esc(c.id)}">${channelIcon(c.type)} ${esc(c.name)}</button>`).join("");
+  return chans.map(c => `<option value="${esc(c.id)}" ${c.id === chatChannel ? "selected" : ""}>${channelIcon(c.type)} ${esc(c.name)}</option>`).join("");
 }
 function renderChat() {
   const msgs = store.chat || [];
@@ -615,7 +615,7 @@ function renderChat() {
   return `<div class="chat-wrap">
     <div class="chat-head"><div><h2 id="chatTitle">${esc(channelName(chatChannel))}</h2><div class="sub">${msgs.length} pesan</div></div>
       <button class="round-btn" id="chatReload" title="Muat ulang">⟳</button></div>
-    <div class="chat-channels"><div class="chchips" id="chatChips">${channelsHTML()}</div><button class="chchip new" id="chatNewDM" title="Pesan pribadi">＋ DM</button></div>
+    <div class="chat-channels"><select class="chan-select" id="chatChanSel">${channelsHTML()}</select><button class="chchip new" id="chatNewDM" title="Pesan pribadi">＋ DM</button></div>
     <div class="chat-online" id="chatOnline" hidden></div>
     <div class="chat-list" id="chatList">${list}</div>
     <form class="chat-composer" id="chatForm" autocomplete="off">
@@ -655,7 +655,7 @@ function setChannel(ch) {
   const ci = document.getElementById("chatInput"); if (ci) ci.focus();
 }
 function renderChannels() {
-  const chips = document.getElementById("chatChips"); if (chips) { chips.innerHTML = channelsHTML(); bindView(); }
+  const sel = document.getElementById("chatChanSel"); if (sel) { sel.innerHTML = channelsHTML(); bindView(); }
   const h = document.getElementById("chatTitle"); if (h) h.textContent = channelName(chatChannel);
 }
 function dmChannelId(a, b) { return "dm:" + [a, b].sort().join(":"); }
@@ -802,7 +802,7 @@ function bindView() {
   const chatForm = c.querySelector("#chatForm"); if (chatForm) chatForm.onsubmit = (e) => { e.preventDefault(); sendChat(); };
   const chatReload = c.querySelector("#chatReload"); if (chatReload) chatReload.onclick = () => loadChat();
   c.querySelectorAll("[data-chatdel]").forEach(b => b.onclick = () => hapusChat(b.dataset.chatdel));
-  c.querySelectorAll("[data-chan]").forEach(b => b.onclick = () => setChannel(b.dataset.chan));
+  const chanSel = c.querySelector("#chatChanSel"); if (chanSel) chanSel.onchange = () => setChannel(chanSel.value);
   const chatNewDM = c.querySelector("#chatNewDM"); if (chatNewDM) chatNewDM.onclick = openDMPicker;
   const back = c.querySelector("#backHome"); if (back) back.onclick = () => setView("agenda");
   const cp = c.querySelector("#calPrev"), cn = c.querySelector("#calNext");
