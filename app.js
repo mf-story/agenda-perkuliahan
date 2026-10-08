@@ -548,6 +548,8 @@ function taskHTML(t) {
   const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
   const jkBadge = isPres ? `<span class="tag blue">Presentasi</span>` : "";
   const canDel = isManager() || (me && t.createdBy === me.id);
+  const mkObj = (store.matkul || []).find(m => (m.nama || "") === (t.matkul || ""));
+  const dosenNama = t.dosen || (mkObj && mkObj.dosen) || "";
   let extra = "";
   if (isManager()) {
     const p = t.progres || { done:0,total:0,submitted:0 };
@@ -572,6 +574,7 @@ function taskHTML(t) {
       <div class="task-meta"><span class="tag mk">${esc(t.matkul||"Umum")}</span>${tipeBadge}${jkBadge}
         <span class="due ${dl.urgent&&!done?"urgent":""}">🕑 ${t.deadline?fmtTanggal(t.deadline)+" • ":""}${dl.txt}</span></div>
       ${t.deskripsi?`<div class="task-meta"><span>📝 ${esc(t.deskripsi)}</span></div>`:""}
+      ${dosenNama?`<div class="task-meta"><span>👨‍🏫 Dosen: ${esc(dosenNama)}</span></div>`:""}
       ${t.anggota && t.anggota.length ? `<div class="task-meta"><span>${(t.jenisKumpul==="presentasi"||t.jenisKumpul==="keduanya")?"🎤 Presentasi":"👥 Anggota"} (${t.anggota.length}): ${t.anggota.map(a=>esc(a.nama)).join(", ")}</span></div>` : ""}
       ${!isManager() && t.createdByNama ? `<div class="task-meta"><span>✍ Dibuat oleh: ${esc(t.createdByNama)}</span></div>` : ""}
       ${extra}</div>
