@@ -19,6 +19,7 @@ let agendaMatkul = "";                   // filter mata kuliah (kosong = semua)
 let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
 let filterMhs = "";                       // filter per mahasiswa (admin/dosen) di Agenda & Tugas
 let chatChannel = "kelas";                // channel obrolan aktif (kelas | dm:.. | tugas:..)
+let chatPendingFile = null;               // lampiran PDF yang menunggu dikirim {orig, base64, size}
 let deferredPrompt = null;                // event beforeinstallprompt (pasang PWA)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
@@ -237,7 +238,7 @@ async function pollUpdates() {
     const viewingChat = currentView === "chat" && document.visibilityState === "visible";
     if (lastChatTs && newest > lastChatTs) {
       const fresh = chat.filter(m => m.ts > lastChatTs && !(me && m.userId === me.id));
-      if (fresh.length && !viewingChat) { const last = fresh[fresh.length - 1]; showSystemNotif("💬 " + last.nama, last.text, "chat"); playNotifSound(); setChatDot(true); }
+      if (fresh.length && !viewingChat) { const last = fresh[fresh.length - 1]; showSystemNotif("💬 " + last.nama, last.text || (last.file ? "📎 " + last.file.orig : ""), "chat"); playNotifSound(); setChatDot(true); }
     }
     if (newest) lastChatTs = Math.max(lastChatTs, newest);
   } catch {}
@@ -618,7 +619,11 @@ function renderChat() {
     <div class="chat-channels"><select class="chan-select" id="chatChanSel">${channelsHTML()}</select><button class="chchip new" id="chatNewDM" title="Pesan pribadi">＋ DM</button></div>
     <div class="chat-online" id="chatOnline" hidden></div>
     <div class="chat-list" id="chatList">${list}</div>
+    <div class="chat-attach-chip" id="chatAttachChip" hidden></div>
     <form class="chat-composer" id="chatForm" autocomplete="off">
+      <label class="chat-attach" id="chatAttach" title="Lampirkan PDF / Word">📎
+        <input type="file" id="chatFile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+      </label>
       <input class="chat-input" id="chatInput" placeholder="Tulis pesan…" maxlength="2000" />
       <button class="chat-send" type="submit" title="Kirim">➤</button>
     </form>
@@ -628,15 +633,23 @@ function chatBubble(m) {
   const mine = me && m.userId === me.id;
   const canDel = mine || isManager();
   const roleTag = m.role && m.role !== "mahasiswa" ? `<span class="chat-role">${esc(m.role)}</span>` : "";
+  const ft = m.file ? (m.file.ext || (m.file.orig||"").split(".").pop() || "").toLowerCase() : "";
+  const isPdf = ft === "pdf";
+  const ic = isPdf ? "📄" : "📝";
+  const sub = (isPdf ? "PDF" : "Word") + (m.file && m.file.size ? ` · ${fmtBytes(m.file.size)}` : "") + (isPdf ? " · Ketuk untuk buka" : " · Ketuk untuk unduh");
+  const fileHTML = m.file ? `<button class="chat-file ${isPdf?"pdf":"word"}" data-pdf="${esc(m.file.name)}" data-pdfname="${esc(m.file.orig)}" data-ext="${esc(ft)}">
+      <span class="cf-ic">${ic}</span><span class="cf-info"><span class="cf-name">${esc(m.file.orig)}</span><span class="cf-sub">${sub}</span></span></button>` : "";
   return `<div class="chat-row ${mine?"me":""}">
     ${mine?"":`<div class="chat-av">${esc(initial(m.nama))}</div>`}
     <div class="chat-bubble">
       ${mine?"":`<div class="chat-name">${esc(m.nama)} ${roleTag}</div>`}
-      <div class="chat-text">${esc(m.text)}</div>
+      ${fileHTML}
+      ${m.text?`<div class="chat-text">${esc(m.text)}</div>`:""}
       <div class="chat-meta">${chatTime(m.ts)}${canDel?` <button class="chat-del" data-chatdel="${m.id}" title="Hapus">✕</button>`:""}</div>
     </div>
   </div>`;
 }
+function fmtBytes(n) { if (n < 1024) return n + " B"; if (n < 1048576) return (n/1024).toFixed(0) + " KB"; return (n/1048576).toFixed(1) + " MB"; }
 function chatTime(ts) {
   const d = new Date(ts); const today = new Date(); today.setHours(0,0,0,0);
   const jam = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
@@ -646,11 +659,11 @@ async function loadChat() {
   try { store._channels = await api("/channels"); } catch (e) {}
   try { store.chat = await api("/chat?channel=" + encodeURIComponent(chatChannel)); } catch (e) {}
   try { store._online = await api("/online"); } catch (e) {}
-  if (currentView === "chat") { updateChatList(); renderChannels(); renderOnline(); }
+  if (currentView === "chat") { updateChatList(); renderChannels(); renderOnline(); renderAttachChip(); }
 }
 function setChannel(ch) {
   if (ch === chatChannel) return;
-  chatChannel = ch; store.chat = [];
+  chatChannel = ch; store.chat = []; chatPendingFile = null;
   render(); loadChat();
   const ci = document.getElementById("chatInput"); if (ci) ci.focus();
 }
@@ -697,12 +710,65 @@ function updateChatList() {
   if (atBottom) el.scrollTop = el.scrollHeight;
 }
 function scrollChatBottom() { const el = document.getElementById("chatList"); if (el) el.scrollTop = el.scrollHeight; }
+function renderAttachChip() {
+  const chip = document.getElementById("chatAttachChip"); if (!chip) return;
+  if (!chatPendingFile) { chip.hidden = true; chip.innerHTML = ""; return; }
+  const isPdf = chatPendingFile.ext === "pdf";
+  chip.hidden = false;
+  chip.innerHTML = `<span class="cf-ic">${isPdf?"📄":"📝"}</span><span class="cf-name">${esc(chatPendingFile.orig)}</span><span class="cf-sz">${fmtBytes(chatPendingFile.size)}</span><button type="button" class="cf-x" id="chatAttachClear" title="Batal">✕</button>`;
+  const x = document.getElementById("chatAttachClear"); if (x) x.onclick = () => { chatPendingFile = null; renderAttachChip(); };
+}
+async function pickChatFile(fileInput) {
+  const f = fileInput.files && fileInput.files[0]; fileInput.value = "";
+  if (!f) return;
+  const ext = (f.name.split(".").pop() || "").toLowerCase();
+  if (!["pdf", "doc", "docx"].includes(ext)) { toast("Hanya PDF atau Word (.doc/.docx)"); return; }
+  if (f.size > 5 * 1024 * 1024) { toast("Ukuran file maksimal 5 MB"); return; }
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = () => reject(new Error("Gagal membaca file"));
+      r.readAsDataURL(f);
+    });
+    chatPendingFile = { orig: f.name, base64, size: f.size, ext };
+    renderAttachChip();
+    const ci = document.getElementById("chatInput"); if (ci) ci.focus();
+  } catch (e) { toast(e.message); }
+}
 async function sendChat() {
   const input = document.getElementById("chatInput"); if (!input) return;
-  const text = input.value.trim(); if (!text) return;
-  input.value = "";
-  try { await api("/chat", "POST", { text, channel: chatChannel }); await loadChat(); scrollChatBottom(); }
-  catch (e) { toast(e.message); input.value = text; }
+  const text = input.value.trim();
+  if (!text && !chatPendingFile) return;
+  const pending = chatPendingFile;
+  input.value = ""; chatPendingFile = null; renderAttachChip();
+  const payload = { text, channel: chatChannel };
+  if (pending) { payload.fileBase64 = pending.base64; payload.fileOrig = pending.orig; }
+  try { await api("/chat", "POST", payload); await loadChat(); scrollChatBottom(); }
+  catch (e) { toast(e.message); input.value = text; chatPendingFile = pending; renderAttachChip(); }
+}
+async function openChatFile(name, orig, ext) {
+  try {
+    toast("Membuka " + orig + "…");
+    const res = await fetch("/api/chatfile/" + encodeURIComponent(name), { headers: token ? { Authorization: "Bearer " + token } : {} });
+    if (!res.ok) throw new Error("Gagal membuka berkas");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    if (ext === "pdf") { openPdfViewer(url, orig); }
+    else { const a = document.createElement("a"); a.href = url; a.download = orig; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
+  } catch (e) { toast(e.message); }
+}
+function openPdfViewer(url, orig) {
+  const ov = document.createElement("div");
+  ov.className = "pdf-overlay";
+  ov.innerHTML = `<div class="pdf-bar"><span class="pdf-title">${esc(orig)}</span>
+    <a class="pdf-dl" href="${url}" download="${esc(orig)}" title="Unduh">⬇</a>
+    <button class="pdf-close" title="Tutup">✕</button></div>
+    <iframe class="pdf-frame" src="${url}"></iframe>`;
+  const close = () => { ov.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+  ov.querySelector(".pdf-close").onclick = close;
+  ov.addEventListener("click", e => { if (e.target === ov) close(); });
+  document.body.appendChild(ov);
 }
 async function hapusChat(id) {
   try { await api("/chat/"+id, "DELETE"); store.chat = (store.chat||[]).filter(m => m.id !== id); updateChatList(); }
@@ -804,6 +870,8 @@ function bindView() {
   c.querySelectorAll("[data-chatdel]").forEach(b => b.onclick = () => hapusChat(b.dataset.chatdel));
   const chanSel = c.querySelector("#chatChanSel"); if (chanSel) chanSel.onchange = () => setChannel(chanSel.value);
   const chatNewDM = c.querySelector("#chatNewDM"); if (chatNewDM) chatNewDM.onclick = openDMPicker;
+  const chatFile = c.querySelector("#chatFile"); if (chatFile) chatFile.onchange = () => pickChatFile(chatFile);
+  c.querySelectorAll("[data-pdf]").forEach(b => b.onclick = () => openChatFile(b.dataset.pdf, b.dataset.pdfname, b.dataset.ext));
   const back = c.querySelector("#backHome"); if (back) back.onclick = () => setView("agenda");
   const cp = c.querySelector("#calPrev"), cn = c.querySelector("#calNext");
   if (cp) cp.onclick = () => { calM--; if (calM<0){calM=11;calY--;} render(); };

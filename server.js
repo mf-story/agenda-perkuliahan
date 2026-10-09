@@ -314,6 +314,21 @@ const server = http.createServer(async (req, res) => {
       return fs.createReadStream(file).pipe(res);
     }
 
+    // Lampiran obrolan (PDF/Word): /api/chatfile/:name — PDF disajikan inline, Word sebagai unduhan
+    if (parts[1] === "chatfile" && method === "GET") {
+      const name = path.basename(decodeURIComponent(parts[2] || ""));
+      const file = path.join(UPLOAD_DIR, name);
+      if (!file.startsWith(UPLOAD_DIR) || !fs.existsSync(file)) { res.writeHead(404); return res.end("Not found"); }
+      const msg = (DB.chat || []).find(m => m.file && m.file.name === name);
+      if (!msg || !canAccessChannel(me, msg.channel || "kelas")) { res.writeHead(403); return res.end("Forbidden"); }
+      const orig = (msg.file && msg.file.orig) || name;
+      const ext = path.extname(name).toLowerCase();
+      const CT = { ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+      const disp = ext === ".pdf" ? "inline" : "attachment";
+      res.writeHead(200, { "Content-Type": CT[ext] || "application/octet-stream", "Content-Disposition": `${disp}; filename="${orig}"` });
+      return fs.createReadStream(file).pipe(res);
+    }
+
     const resource = parts[1];
     const id = parts[2];
     const body = (method === "POST" || method === "PUT" || method === "PATCH") ? await readBody(req) : {};
@@ -559,28 +574,46 @@ const server = http.createServer(async (req, res) => {
         const channel = q.get("channel") || "kelas";
         if (!canAccessChannel(me, channel)) return sendJSON(res, 403, { error: "Tidak punya akses ke obrolan ini" });
         const list = (DB.chat || []).filter(m => (m.channel || "kelas") === channel).slice(-200)
-          .map(m => ({ id: m.id, channel: m.channel || "kelas", userId: m.userId, nama: userName(m.userId) || m.nama, role: (DB.users.find(u => u.id === m.userId) || {}).role || m.role, text: m.text, ts: m.ts }));
+          .map(m => ({ id: m.id, channel: m.channel || "kelas", userId: m.userId, nama: userName(m.userId) || m.nama, role: (DB.users.find(u => u.id === m.userId) || {}).role || m.role, text: m.text, file: m.file || null, ts: m.ts }));
         return sendJSON(res, 200, list);
       }
       if (method === "POST") {
         const text = String(body.text || "").trim();
         const channel = String(body.channel || "kelas");
-        if (!text) return sendJSON(res, 400, { error: "Pesan kosong" });
-        if (text.length > 2000) return sendJSON(res, 400, { error: "Pesan terlalu panjang (maks 2000 karakter)" });
         if (!canAccessChannel(me, channel)) return sendJSON(res, 403, { error: "Tidak punya akses ke obrolan ini" });
+        let file = null;
+        if (body.fileBase64 && body.fileOrig) {
+          const safeOrig = path.basename(String(body.fileOrig)).replace(/[^\w.\- ]+/g, "_").slice(0, 120);
+          const ext = path.extname(safeOrig).toLowerCase();
+          if (![".pdf", ".doc", ".docx"].includes(ext)) return sendJSON(res, 400, { error: "Hanya berkas PDF atau Word (.doc/.docx) yang diizinkan" });
+          const buf = Buffer.from(String(body.fileBase64), "base64");
+          if (buf.length > 5 * 1024 * 1024) return sendJSON(res, 400, { error: "Ukuran file maksimal 5 MB" });
+          const head = buf.slice(0, 8);
+          const okPdf = ext === ".pdf" && head.slice(0, 5).toString("latin1") === "%PDF-";
+          const okDocx = ext === ".docx" && head.slice(0, 4).toString("latin1") === "PK\x03\x04";
+          const okDoc = ext === ".doc" && head.slice(0, 4).toString("hex") === "d0cf11e0";
+          if (!okPdf && !okDocx && !okDoc) return sendJSON(res, 400, { error: "Isi berkas tidak sesuai dengan jenisnya" });
+          const fname = uid() + ext;
+          fs.writeFileSync(path.join(UPLOAD_DIR, fname), buf);
+          file = { name: fname, orig: safeOrig, size: buf.length, ext: ext.slice(1) };
+        }
+        if (!text && !file) return sendJSON(res, 400, { error: "Pesan kosong" });
+        if (text.length > 2000) return sendJSON(res, 400, { error: "Pesan terlalu panjang (maks 2000 karakter)" });
         if (!Array.isArray(DB.chat)) DB.chat = [];
-        const msg = { id: uid(), channel, userId: me.id, nama: me.nama, role: me.role, text, ts: Date.now() };
+        const msg = { id: uid(), channel, userId: me.id, nama: me.nama, role: me.role, text, file, ts: Date.now() };
         DB.chat.push(msg);
         if (DB.chat.length > 3000) DB.chat = DB.chat.slice(-3000);
         saveDB();
         const ctx = channel === "kelas" ? "" : " · " + channelLabel(channel);
-        sendPushToUsers(channelMembers(channel).filter(x => x !== me.id), { title: "💬 " + me.nama + ctx, body: text.slice(0, 160), tag: "chat:" + channel });
+        const preview = file ? "📎 " + file.orig : text.slice(0, 160);
+        sendPushToUsers(channelMembers(channel).filter(x => x !== me.id), { title: "💬 " + me.nama + ctx, body: preview, tag: "chat:" + channel });
         return sendJSON(res, 201, msg);
       }
       if (method === "DELETE") {
         const m = (DB.chat || []).find(x => x.id === id);
         if (!m) return sendJSON(res, 404, { error: "Tidak ditemukan" });
         if (m.userId !== me.id && !isManager) return sendJSON(res, 403, { error: "Hanya pengirim atau dosen/admin yang dapat menghapus" });
+        if (m.file && m.file.name) { try { fs.unlinkSync(path.join(UPLOAD_DIR, m.file.name)); } catch {} }
         DB.chat = DB.chat.filter(x => x.id !== id);
         saveDB();
         return sendJSON(res, 200, { ok: true });
