@@ -212,6 +212,34 @@ function sendPushToUsers(userIds, payload) {
     if (dead.length) { DB.pushSubs = DB.pushSubs.filter(s => !dead.includes(s.endpoint)); saveDB(); }
   });
 }
+// Simpan/perbarui lampiran tugas (PDF/Word). Mengembalikan daftar lampiran final.
+function saveTaskFiles(existing, body) {
+  existing = Array.isArray(existing) ? existing : [];
+  const keepNames = Array.isArray(body.lampiran) ? body.lampiran.map(f => f && f.name).filter(Boolean) : existing.map(f => f.name);
+  const kept = existing.filter(f => keepNames.includes(f.name));
+  // Hapus berkas yang tidak dipertahankan
+  existing.filter(f => !keepNames.includes(f.name)).forEach(f => { try { fs.unlinkSync(path.join(UPLOAD_DIR, f.name)); } catch {} });
+  const result = [...kept];
+  const news = Array.isArray(body.newFiles) ? body.newFiles : [];
+  for (const nf of news) {
+    if (result.length >= 10) break;
+    if (!nf || !nf.base64 || !nf.orig) continue;
+    const safeOrig = path.basename(String(nf.orig)).replace(/[^\w.\- ]+/g, "_").slice(0, 120);
+    const ext = path.extname(safeOrig).toLowerCase();
+    if (![".pdf", ".doc", ".docx"].includes(ext)) continue;
+    const buf = Buffer.from(String(nf.base64), "base64");
+    if (buf.length > 5 * 1024 * 1024) continue;
+    const head = buf.slice(0, 8);
+    const okPdf = ext === ".pdf" && head.slice(0, 5).toString("latin1") === "%PDF-";
+    const okDocx = ext === ".docx" && head.slice(0, 4).toString("latin1") === "PK\x03\x04";
+    const okDoc = ext === ".doc" && head.slice(0, 4).toString("hex") === "d0cf11e0";
+    if (!okPdf && !okDocx && !okDoc) continue;
+    const fname = uid() + ext;
+    fs.writeFileSync(path.join(UPLOAD_DIR, fname), buf);
+    result.push({ name: fname, orig: safeOrig, size: buf.length, ext: ext.slice(1) });
+  }
+  return result;
+}
 
 /* ============================================================
    Static file serving
@@ -322,6 +350,24 @@ const server = http.createServer(async (req, res) => {
       const msg = (DB.chat || []).find(m => m.file && m.file.name === name);
       if (!msg || !canAccessChannel(me, msg.channel || "kelas")) { res.writeHead(403); return res.end("Forbidden"); }
       const orig = (msg.file && msg.file.orig) || name;
+      const ext = path.extname(name).toLowerCase();
+      const CT = { ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+      const disp = ext === ".pdf" ? "inline" : "attachment";
+      res.writeHead(200, { "Content-Type": CT[ext] || "application/octet-stream", "Content-Disposition": `${disp}; filename="${orig}"` });
+      return fs.createReadStream(file).pipe(res);
+    }
+
+    // Lampiran tugas (PDF/Word): /api/taskfile/:name — PDF inline, Word unduhan
+    if (parts[1] === "taskfile" && method === "GET") {
+      const name = path.basename(decodeURIComponent(parts[2] || ""));
+      const file = path.join(UPLOAD_DIR, name);
+      if (!file.startsWith(UPLOAD_DIR) || !fs.existsSync(file)) { res.writeHead(404); return res.end("Not found"); }
+      const tugas = (DB.tugas || []).find(t => Array.isArray(t.lampiran) && t.lampiran.some(f => f.name === name));
+      if (!tugas) { res.writeHead(404); return res.end("Not found"); }
+      const relevan = isManager || (enrolled(me.id, tugas.matkul) && (tugas.tipe !== "kelompok" || !(tugas.anggota || []).length || tugas.anggota.some(a => a.id === me.id)));
+      if (!relevan) { res.writeHead(403); return res.end("Forbidden"); }
+      const lamp = tugas.lampiran.find(f => f.name === name);
+      const orig = (lamp && lamp.orig) || name;
       const ext = path.extname(name).toLowerCase();
       const CT = { ".pdf": "application/pdf", ".doc": "application/msword", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
       const disp = ext === ".pdf" ? "inline" : "attachment";
@@ -514,11 +560,11 @@ const server = http.createServer(async (req, res) => {
       }
       const shape = () => ({ judul: s(body.judul), matkul: s(body.matkul), deadline: s(body.deadline), prioritas: ["tinggi", "sedang", "rendah"].includes(body.prioritas) ? body.prioritas : "sedang", deskripsi: s(body.deskripsi), tipe: body.tipe === "kelompok" ? "kelompok" : "individu", jenisKumpul: ["submit", "presentasi", "keduanya"].includes(body.jenisKumpul) ? body.jenisKumpul : "submit", pertemuanId: s(body.pertemuanId), anggota: Array.isArray(body.anggota) ? body.anggota.filter(a => a && a.id).map(a => ({ id: String(a.id), nama: String(a.nama || "") })) : [] });
       // Semua pengguna boleh membuat & MENGEDIT tugas; hapus hanya pembuat atau dosen/admin.
-      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); { const _ids = enrolledIds(it.matkul); const _tg = (it.tipe === "kelompok" && Array.isArray(it.anggota) && it.anggota.length) ? it.anggota.map(a => a.id).filter(x => _ids.includes(x)) : _ids; sendPushToUsers(_tg.filter(x => x !== me.id), { title: "Tugas baru", body: `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, tag: "tugas" }); } saveDB(); return sendJSON(res, 201, it); }
+      if (method === "POST") { if (!body.judul) return sendJSON(res, 400, { error: "Judul wajib" }); const it = { id: uid(), ...shape(), lampiran: saveTaskFiles([], body), createdBy: me.id, createdByNama: me.nama, createdByRole: me.role, createdAt: Date.now() }; DB.tugas.push(it); pushNotif("tugas", "Tugas baru", `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, it.matkul, { tipe: it.tipe, anggota: it.anggota }); { const _ids = enrolledIds(it.matkul); const _tg = (it.tipe === "kelompok" && Array.isArray(it.anggota) && it.anggota.length) ? it.anggota.map(a => a.id).filter(x => _ids.includes(x)) : _ids; sendPushToUsers(_tg.filter(x => x !== me.id), { title: "Tugas baru", body: `${it.judul}${it.matkul ? " — " + it.matkul : ""}`, tag: "tugas" }); } saveDB(); return sendJSON(res, 201, it); }
       const ti = DB.tugas.findIndex(x => x.id === id);
       if (ti < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
-      if (method === "PUT") { DB.tugas[ti] = { ...DB.tugas[ti], ...shape() }; saveDB(); return sendJSON(res, 200, DB.tugas[ti]); }
-      if (method === "DELETE") { if (!isManager && DB.tugas[ti].createdBy !== me.id) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin yang dapat menghapus tugas ini" }); DB.tugas = DB.tugas.filter(x => x.id !== id); DB.submissions = DB.submissions.filter(sb => sb.tugasId !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
+      if (method === "PUT") { const lampiran = saveTaskFiles(DB.tugas[ti].lampiran, body); DB.tugas[ti] = { ...DB.tugas[ti], ...shape(), lampiran }; saveDB(); return sendJSON(res, 200, DB.tugas[ti]); }
+      if (method === "DELETE") { if (!isManager && DB.tugas[ti].createdBy !== me.id) return sendJSON(res, 403, { error: "Hanya pembuat atau dosen/admin yang dapat menghapus tugas ini" }); (DB.tugas[ti].lampiran || []).forEach(f => { try { fs.unlinkSync(path.join(UPLOAD_DIR, f.name)); } catch {} }); DB.tugas = DB.tugas.filter(x => x.id !== id); DB.submissions = DB.submissions.filter(sb => sb.tugasId !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
     }
 
     // ---------- SUBMISSIONS (mahasiswa kumpul / tandai selesai) ----------

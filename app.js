@@ -20,6 +20,7 @@ let tugasMatkul = "";                     // filter mata kuliah di tab Tugas
 let filterMhs = "";                       // filter per mahasiswa (admin/dosen) di Agenda & Tugas
 let chatChannel = "kelas";                // channel obrolan aktif (kelas | dm:.. | tugas:..)
 let chatPendingFile = null;               // lampiran PDF yang menunggu dikirim {orig, base64, size}
+let taskFormFiles = { keep: [], add: [] }; // lampiran tugas saat mengisi form
 let deferredPrompt = null;                // event beforeinstallprompt (pasang PWA)
 let tugasFilter = "aktif";               // aktif|semua|selesai
 let searchTerm = "";
@@ -578,6 +579,7 @@ function taskHTML(t) {
       ${t.deskripsi?`<div class="task-meta"><span>📝 ${esc(t.deskripsi)}</span></div>`:""}
       ${dosenNama?`<div class="task-meta"><span>👨‍🏫 Dosen: ${esc(dosenNama)}</span></div>`:""}
       ${t.anggota && t.anggota.length ? `<div class="task-meta"><span>${(t.jenisKumpul==="presentasi"||t.jenisKumpul==="keduanya")?"🎤 Presentasi":"👥 Anggota"} (${t.anggota.length}): ${t.anggota.map(a=>esc(a.nama)).join(", ")}</span></div>` : ""}
+      ${t.lampiran && t.lampiran.length ? `<div class="task-files">${t.lampiran.map(f=>attachCardHTML(f,"taskfile")).join("")}</div>` : ""}
       ${!isManager() && t.createdByNama ? `<div class="task-meta"><span>✍ Dibuat oleh: ${esc(t.createdByNama)}</span></div>` : ""}
       ${extra}</div>
     ${me?`<div class="task-actions"><button class="btn-icon" data-edit="tugas" data-id="${t.id}">✎</button>${canDel?`<button class="btn-icon danger" data-del="tugas" data-id="${t.id}">🗑</button>`:""}</div>`:""}
@@ -633,13 +635,7 @@ function chatBubble(m) {
   const mine = me && m.userId === me.id;
   const canDel = mine || isManager();
   const roleTag = m.role && m.role !== "mahasiswa" ? `<span class="chat-role">${esc(m.role)}</span>` : "";
-  const ft = m.file ? (m.file.ext || (m.file.orig||"").split(".").pop() || "").toLowerCase() : "";
-  const isPdf = ft === "pdf";
-  const canView = isPdf || ft === "docx";
-  const ic = isPdf ? "📄" : "📝";
-  const sub = (isPdf ? "PDF" : "Word") + (m.file && m.file.size ? ` · ${fmtBytes(m.file.size)}` : "") + (canView ? " · Ketuk untuk buka" : " · Ketuk untuk unduh");
-  const fileHTML = m.file ? `<button class="chat-file ${isPdf?"pdf":"word"}" data-pdf="${esc(m.file.name)}" data-pdfname="${esc(m.file.orig)}" data-ext="${esc(ft)}">
-      <span class="cf-ic">${ic}</span><span class="cf-info"><span class="cf-name">${esc(m.file.orig)}</span><span class="cf-sub">${sub}</span></span></button>` : "";
+  const fileHTML = m.file ? attachCardHTML(m.file, "chatfile") : "";
   return `<div class="chat-row ${mine?"me":""}">
     ${mine?"":`<div class="chat-av">${esc(initial(m.nama))}</div>`}
     <div class="chat-bubble">
@@ -649,6 +645,15 @@ function chatBubble(m) {
       <div class="chat-meta">${chatTime(m.ts)}${canDel?` <button class="chat-del" data-chatdel="${m.id}" title="Hapus">✕</button>`:""}</div>
     </div>
   </div>`;
+}
+function attachCardHTML(file, base) {
+  const ft = (file.ext || (file.orig || "").split(".").pop() || "").toLowerCase();
+  const isPdf = ft === "pdf";
+  const canView = isPdf || ft === "docx";
+  const ic = isPdf ? "📄" : "📝";
+  const sub = (isPdf ? "PDF" : "Word") + (file.size ? ` · ${fmtBytes(file.size)}` : "") + (canView ? " · Ketuk untuk buka" : " · Ketuk untuk unduh");
+  return `<button class="chat-file ${isPdf?"pdf":"word"}" data-pdf="${esc(file.name)}" data-pdfname="${esc(file.orig)}" data-ext="${esc(ft)}" data-base="${esc(base)}">
+      <span class="cf-ic">${ic}</span><span class="cf-info"><span class="cf-name">${esc(file.orig)}</span><span class="cf-sub">${sub}</span></span></button>`;
 }
 function fmtBytes(n) { if (n < 1024) return n + " B"; if (n < 1048576) return (n/1024).toFixed(0) + " KB"; return (n/1048576).toFixed(1) + " MB"; }
 function chatTime(ts) {
@@ -748,10 +753,10 @@ async function sendChat() {
   try { await api("/chat", "POST", payload); await loadChat(); scrollChatBottom(); }
   catch (e) { toast(e.message); input.value = text; chatPendingFile = pending; renderAttachChip(); }
 }
-async function openChatFile(name, orig, ext) {
+async function openChatFile(name, orig, ext, base) {
   try {
     toast("Membuka " + orig + "…");
-    const res = await fetch("/api/chatfile/" + encodeURIComponent(name), { headers: token ? { Authorization: "Bearer " + token } : {} });
+    const res = await fetch("/api/" + (base || "chatfile") + "/" + encodeURIComponent(name), { headers: token ? { Authorization: "Bearer " + token } : {} });
     if (!res.ok) throw new Error("Gagal membuka berkas");
     const blob = await res.blob();
     if (ext === "pdf") {
@@ -912,7 +917,7 @@ function bindView() {
   const chanSel = c.querySelector("#chatChanSel"); if (chanSel) chanSel.onchange = () => setChannel(chanSel.value);
   const chatNewDM = c.querySelector("#chatNewDM"); if (chatNewDM) chatNewDM.onclick = openDMPicker;
   const chatFile = c.querySelector("#chatFile"); if (chatFile) chatFile.onchange = () => pickChatFile(chatFile);
-  c.querySelectorAll("[data-pdf]").forEach(b => b.onclick = () => openChatFile(b.dataset.pdf, b.dataset.pdfname, b.dataset.ext));
+  c.querySelectorAll("[data-pdf]").forEach(b => b.onclick = () => openChatFile(b.dataset.pdf, b.dataset.pdfname, b.dataset.ext, b.dataset.base));
   const back = c.querySelector("#backHome"); if (back) back.onclick = () => setView("agenda");
   const cp = c.querySelector("#calPrev"), cn = c.querySelector("#calNext");
   if (cp) cp.onclick = () => { calM--; if (calM<0){calM=11;calY--;} render(); };
@@ -1055,6 +1060,7 @@ function openTaskDetail(id) {
       ${t.createdByNama?infoRow("✍","Dibuat oleh",esc(t.createdByNama)):""}
     </div>
     ${t.anggota && t.anggota.length ? `<div class="detail-sec"><h4>${isPres?"Presentasi":"Anggota"} (${t.anggota.length})</h4><div class="dtask"><div class="dtask-row"><div class="dtask-main"><div class="t" style="font-weight:500">${t.anggota.map(a=>esc(a.nama)).join(", ")}</div></div></div></div></div>` : ""}
+    ${t.lampiran && t.lampiran.length ? `<div class="detail-sec"><h4>Lampiran (${t.lampiran.length})</h4><div class="task-files">${t.lampiran.map(f=>attachCardHTML(f,"taskfile")).join("")}</div></div>` : ""}
     <div class="modal-actions">
       ${!isManager()?`<button class="btn ${mineDone?"ghost":"gold"}" id="tdToggle" ${terkunci?"disabled":""}>${mineDone?"↺ Batalkan":"✓ Tandai Selesai"}</button>`:`<button class="btn ${t.selesai?"ghost":"gold"}" id="tdDone">${t.selesai?"↺ Aktifkan kembali":"✓ Tandai Selesai"}</button>`}
       ${me?`<button class="btn" id="tdEdit">✎ Edit</button>`:""}
@@ -1065,6 +1071,7 @@ function openTaskDetail(id) {
   const tdDone = document.getElementById("tdDone"); if (tdDone) tdDone.onclick = () => { closeModal(); toggleTugasDone(t.id); };
   const tdEdit = document.getElementById("tdEdit"); if (tdEdit) tdEdit.onclick = () => openForm("tugas", t.id);
   const tdDel = document.getElementById("tdDel"); if (tdDel) tdDel.onclick = () => hapus("tugas", t.id);
+  document.querySelectorAll("#modalBody [data-pdf]").forEach(b => b.onclick = () => openChatFile(b.dataset.pdf, b.dataset.pdfname, b.dataset.ext, b.dataset.base));
 }
 
 /* ============================================================
@@ -1208,7 +1215,12 @@ function openForm(tipe, id, preset) {
     </div>
     <div class="field"><label>Tenggat</label><input type="date" name="deadline" value="${esc(data.deadline||isoToday())}"></div>
     <div class="field"><label>Jenis Tugas</label><select name="jenisKumpul">${[["submit","Tugas biasa"],["presentasi","Presentasi"]].map(([v,l])=>`<option value="${v}" ${(data.jenisKumpul||"submit")===v?"selected":""}>${l}</option>`).join("")}</select></div>
-    <div class="field"><label>Deskripsi / Instruksi</label><textarea name="deskripsi">${esc(data.deskripsi||"")}</textarea></div>`;
+    <div class="field"><label>Deskripsi / Instruksi</label><textarea name="deskripsi">${esc(data.deskripsi||"")}</textarea></div>
+    <div class="field"><label>Lampiran (PDF / Word) — maks 5 MB/berkas</label>
+      <div id="tFiles" class="tfiles"></div>
+      <label class="btn sm ghost" id="tFileBtn" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📎 Tambah berkas
+        <input type="file" id="tFileInput" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden multiple></label>
+    </div>`;
   else if (tipe === "pertemuan") b = `
     <div class="field"><label>Mata Kuliah</label><select name="matkul">${matkulOptions(data.matkul)}</select></div>
     <div class="field-row"><div class="field"><label>Pertemuan Ke-</label><input type="number" name="pertemuanKe" min="1" max="30" value="${esc(data.pertemuanKe||1)}"></div><div class="field"><label>Tanggal</label><input type="date" name="tanggal" value="${esc(data.tanggal||isoToday())}"></div></div>
@@ -1272,6 +1284,10 @@ function availMahasiswa(matkulNama) {
   return [...list].sort((a, b) => (a.username||"").localeCompare(b.username||""));
 }
 function setupTugasForm(data) {
+  taskFormFiles = { keep: [...(data.lampiran || [])], add: [] };
+  renderTaskFormFiles();
+  const fileInput = document.getElementById("tFileInput");
+  if (fileInput) fileInput.onchange = () => addTaskFormFiles(fileInput);
   const tipeSel = document.getElementById("mTipe");
   const mkSel = document.getElementById("mMatkulT");
   const pertSel = document.getElementById("mPertemuan");
@@ -1310,6 +1326,41 @@ function setupTugasForm(data) {
   if (pertSel) pertSel.addEventListener("change", syncDeadline);
   if (!data.id && pertSel && pertSel.value) syncDeadline();
   if (tipeSel.value === "kelompok") fillAnggota();
+}
+function renderTaskFormFiles() {
+  const el = document.getElementById("tFiles"); if (!el) return;
+  const items = [...taskFormFiles.keep.map(f => ({ ...f, _new: false })), ...taskFormFiles.add.map(f => ({ orig: f.orig, size: f.size, ext: f.ext, _new: true, _id: f._id }))];
+  if (!items.length) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = items.map(f => {
+    const isPdf = (f.ext || "") === "pdf";
+    return `<div class="tfile-chip"><span class="cf-ic">${isPdf?"📄":"📝"}</span><span class="cf-name">${esc(f.orig)}</span><span class="cf-sz">${f.size?fmtBytes(f.size):""}</span><button type="button" class="cf-x" data-rm="${f._new?"new:"+f._id:"keep:"+esc(f.name)}" title="Hapus">✕</button></div>`;
+  }).join("");
+  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
+    const [kind, val] = b.dataset.rm.split(/:(.*)/s);
+    if (kind === "new") taskFormFiles.add = taskFormFiles.add.filter(x => String(x._id) !== val);
+    else taskFormFiles.keep = taskFormFiles.keep.filter(x => x.name !== val);
+    renderTaskFormFiles();
+  });
+}
+async function addTaskFormFiles(input) {
+  const files = Array.from(input.files || []); input.value = "";
+  for (const f of files) {
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if (!["pdf", "doc", "docx"].includes(ext)) { toast("Hanya PDF atau Word: " + f.name); continue; }
+    if (f.size > 5 * 1024 * 1024) { toast("Maks 5 MB: " + f.name); continue; }
+    if (taskFormFiles.keep.length + taskFormFiles.add.length >= 10) { toast("Maksimal 10 lampiran"); break; }
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = () => reject(new Error("Gagal membaca " + f.name));
+        r.readAsDataURL(f);
+      });
+      taskFormFiles.add.push({ _id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), orig: f.name, size: f.size, ext, base64 });
+    } catch (e) { toast(e.message); }
+  }
+  renderTaskFormFiles();
 }
 function setupAgendaForm(data) {
   const kat = document.getElementById("mAgKat");
@@ -1358,6 +1409,8 @@ async function simpanForm(tipe, id) {
   if (tipe==="tugas") {
     const cont = document.getElementById("mAnggota");
     f.anggota = (f.tipe === "kelompok" && cont) ? Array.from(cont.querySelectorAll("input:checked")).map(i => ({ id: i.value, nama: i.dataset.nama || "" })) : [];
+    f.lampiran = taskFormFiles.keep;
+    f.newFiles = taskFormFiles.add.map(x => ({ base64: x.base64, orig: x.orig }));
   }
   if (tipe==="agenda") {
     const cont = document.getElementById("mAgAnggota");

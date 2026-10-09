@@ -562,6 +562,14 @@ body {
 .chat-file .cf-info { display: flex; flex-direction: column; min-width: 0; }
 .chat-file .cf-name { font-weight: 700; font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-file .cf-sub { font-size: .72rem; opacity: .75; }
+.task-files { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; }
+.task-files .chat-file { max-width: 340px; background: #f4f8ff; }
+.tfiles { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.tfile-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #eef5ff; border: 1px solid var(--line); border-radius: 10px; font-size: .84rem; }
+.tfile-chip .cf-ic { font-size: 1.1rem; }
+.tfile-chip .cf-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--navy); }
+.tfile-chip .cf-sz { color: var(--muted); font-size: .76rem; }
+.tfile-chip .cf-x { flex: 0 0 auto; border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: .9rem; }
 .pdf-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(8,20,40,.72); display: flex; flex-direction: column; }
 .pdf-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--navy); color: #fff; }
 .pdf-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: .92rem; }
