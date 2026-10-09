@@ -635,8 +635,9 @@ function chatBubble(m) {
   const roleTag = m.role && m.role !== "mahasiswa" ? `<span class="chat-role">${esc(m.role)}</span>` : "";
   const ft = m.file ? (m.file.ext || (m.file.orig||"").split(".").pop() || "").toLowerCase() : "";
   const isPdf = ft === "pdf";
+  const canView = isPdf || ft === "docx";
   const ic = isPdf ? "📄" : "📝";
-  const sub = (isPdf ? "PDF" : "Word") + (m.file && m.file.size ? ` · ${fmtBytes(m.file.size)}` : "") + (isPdf ? " · Ketuk untuk buka" : " · Ketuk untuk unduh");
+  const sub = (isPdf ? "PDF" : "Word") + (m.file && m.file.size ? ` · ${fmtBytes(m.file.size)}` : "") + (canView ? " · Ketuk untuk buka" : " · Ketuk untuk unduh");
   const fileHTML = m.file ? `<button class="chat-file ${isPdf?"pdf":"word"}" data-pdf="${esc(m.file.name)}" data-pdfname="${esc(m.file.orig)}" data-ext="${esc(ft)}">
       <span class="cf-ic">${ic}</span><span class="cf-info"><span class="cf-name">${esc(m.file.orig)}</span><span class="cf-sub">${sub}</span></span></button>` : "";
   return `<div class="chat-row ${mine?"me":""}">
@@ -753,10 +754,36 @@ async function openChatFile(name, orig, ext) {
     const res = await fetch("/api/chatfile/" + encodeURIComponent(name), { headers: token ? { Authorization: "Bearer " + token } : {} });
     if (!res.ok) throw new Error("Gagal membuka berkas");
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    if (ext === "pdf") { openPdfViewer(url, orig); }
-    else { const a = document.createElement("a"); a.href = url; a.download = orig; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
-  } catch (e) { toast(e.message); }
+    if (ext === "pdf") {
+      const url = URL.createObjectURL(blob);
+      openPdfViewer(url, orig);
+    } else if (ext === "docx") {
+      const buf = await blob.arrayBuffer();
+      await loadMammoth();
+      const result = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+      openDocViewer(result.value || "<p><em>Dokumen kosong.</em></p>", orig, blob);
+    } else {
+      downloadBlob(blob, orig);
+    }
+  } catch (e) { toast(e.message || "Gagal membuka berkas"); }
+}
+function downloadBlob(blob, orig) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = orig; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+let _mammothLoading = null;
+function loadMammoth() {
+  if (window.mammoth) return Promise.resolve();
+  if (_mammothLoading) return _mammothLoading;
+  _mammothLoading = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "/mammoth.browser.min.js";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Gagal memuat pembaca Word"));
+    document.head.appendChild(s);
+  });
+  return _mammothLoading;
 }
 function openPdfViewer(url, orig) {
   const ov = document.createElement("div");
@@ -767,6 +794,19 @@ function openPdfViewer(url, orig) {
     <iframe class="pdf-frame" src="${url}"></iframe>`;
   const close = () => { ov.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
   ov.querySelector(".pdf-close").onclick = close;
+  ov.addEventListener("click", e => { if (e.target === ov) close(); });
+  document.body.appendChild(ov);
+}
+function openDocViewer(html, orig, blob) {
+  const ov = document.createElement("div");
+  ov.className = "pdf-overlay";
+  ov.innerHTML = `<div class="pdf-bar"><span class="pdf-title">${esc(orig)}</span>
+    <button class="pdf-dl" id="docDl" title="Unduh">⬇</button>
+    <button class="pdf-close" title="Tutup">✕</button></div>
+    <div class="doc-view">${html}</div>`;
+  const close = () => ov.remove();
+  ov.querySelector(".pdf-close").onclick = close;
+  ov.querySelector("#docDl").onclick = () => downloadBlob(blob, orig);
   ov.addEventListener("click", e => { if (e.target === ov) close(); });
   document.body.appendChild(ov);
 }
