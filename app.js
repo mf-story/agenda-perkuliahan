@@ -996,7 +996,7 @@ function openDetail(kind, id) {
           const canT = !!me;
           return `<div class="dtask-row"><div class="dtask-main"><div class="t">${esc(t.judul)}</div>${presenters}</div>
             <div class="dtask-badges"><span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>${isPres?`<span class="tag blue">Presentasi</span>`:""}${canT?`<button class="btn-icon" data-tedit="${t.id}" title="Edit tugas">✎</button>`:""}</div></div>`;
-        }).join(""):'<div class="dtask-empty">Belum ada tugas untuk pertemuan ini.</div>'}</div>
+        }).join(""):`<div class="dtask-empty">${isManager()?"Belum ada tugas untuk pertemuan ini.":"Tidak ada tugas untuk Anda di pertemuan ini."}</div>`}</div>
       </div>
       ${(p.dokumen && p.dokumen.length) ? `<div class="detail-sec"><h4>Dokumen Tugas</h4>
         ${p.dokumen.map(d => `<div class="doc-group"><div class="doc-group-title">${esc(d.judul)}</div><div class="task-files">${d.lampiran.map(f=>attachCardHTML(f,"taskfile")).join("")}</div></div>`).join("")}
