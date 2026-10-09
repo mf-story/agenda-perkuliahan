@@ -1,7 +1,7 @@
 /* Service Worker — Agenda Perkuliahan
    Shell di-cache agar cepat & bisa dibuka saat offline.
    API (/api/*) TIDAK pernah di-cache (selalu ambil data terbaru). */
-const VERSION = "agenda-v6";
+const VERSION = "agenda-v7";
 const SHELL = ["./", "./index.html", "./style.css", "./app.js", "./logo-unismuh.png", "./icon-192.png", "./icon-512.png", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

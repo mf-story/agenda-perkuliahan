@@ -353,6 +353,8 @@ body {
 .task-item.done .task-check { background: var(--green); border-color: var(--green); color: #fff; }
 .task-body { flex: 1; min-width: 0; }
 .task-title { font-weight: 700; font-size: .96rem; color: var(--navy); }
+.task-title.clickable { cursor: pointer; }
+.task-title.clickable:hover { text-decoration: underline; }
 .task-meta { display: flex; gap: 8px 12px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); margin-top: 6px; align-items: center; }
 .task-meta .due.urgent { color: var(--red); font-weight: 700; }
 .badge { font-size: .66rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; text-transform: capitalize; }

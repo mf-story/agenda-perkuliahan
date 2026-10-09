@@ -572,7 +572,7 @@ function taskHTML(t) {
   }
   return `<div class="task-item p-${pr} ${done?"done":""}">
     ${isManager()?`<span class="task-check" style="cursor:default;background:#f1f5fb;color:var(--navy)">${(t.progres&&t.progres.done)||0}</span>`:`<button class="task-check" data-toggle="${t.id}" ${(!canMark && !(t.mine&&t.mine.selesai))?"disabled":""}>✓</button>`}
-    <div class="task-body"><div class="task-title">${esc(t.judul)}</div>
+    <div class="task-body"><div class="task-title clickable" data-taskdetail="${t.id}">${esc(t.judul)}</div>
       <div class="task-meta"><span class="tag mk">${esc(t.matkul||"Umum")}</span>${tipeBadge}${jkBadge}
         <span class="due ${dl.urgent&&!done?"urgent":""}">🕑 ${t.deadline?fmtTanggal(t.deadline)+" • ":""}${dl.txt}</span></div>
       ${t.deskripsi?`<div class="task-meta"><span>📝 ${esc(t.deskripsi)}</span></div>`:""}
@@ -903,6 +903,7 @@ function bindView() {
   c.querySelectorAll("[data-expand]").forEach(b => b.onclick = () => toggleExpand(b.dataset.expand));
   c.querySelectorAll("[data-file]").forEach(b => b.onclick = (e) => { e.preventDefault(); downloadFile(b.dataset.file, b.dataset.orig); });
   c.querySelectorAll("[data-detail]").forEach(b => b.onclick = () => { const [k,id] = b.dataset.detail.split(":"); openDetail(k, id); });
+  c.querySelectorAll("[data-taskdetail]").forEach(b => b.onclick = () => openTaskDetail(b.dataset.taskdetail));
   c.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => setView(b.dataset.goto));
   c.querySelectorAll("[data-peserta]").forEach(b => b.onclick = () => openPeserta(b.dataset.peserta));
   const chatForm = c.querySelector("#chatForm"); if (chatForm) chatForm.onsubmit = (e) => { e.preventDefault(); sendChat(); };
@@ -1023,6 +1024,47 @@ function openDetail(kind, id) {
     openModal();
     if (canEdit) { document.getElementById("dEdit").onclick = () => openForm("agenda", a.id); document.getElementById("dDel").onclick = () => hapus("agenda", a.id); }
   }
+}
+function openTaskDetail(id) {
+  const t = store.tugas.find(x => x.id === id); if (!t) return;
+  const dl = labelDeadline(t.deadline);
+  const done = tugasSelesai(t);
+  const lewat = lewatTenggat(t) && !(t.mine && t.mine.selesai);
+  const isPres = t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya";
+  const pertObj = t.pertemuanId && (store.pertemuan || []).find(p => p.id === t.pertemuanId);
+  const mkObj = (store.matkul || []).find(m => (m.nama || "") === (t.matkul || ""));
+  const dosenNama = (pertObj && pertObj.pengampu) || t.dosen || (mkObj && mkObj.dosen) || "";
+  const canMark = bolehTandai(t);
+  const mineDone = !!(t.mine && t.mine.selesai);
+  const terkunci = !canMark && !mineDone;
+  const canDel = isManager() || (me && t.createdBy === me.id);
+  const statusHTML = isManager()
+    ? infoRow("📊", "Status", `${(t.progres&&t.progres.done)||0}/${(t.progres&&t.progres.total)||0} mahasiswa menandai selesai`)
+    : infoRow(done ? "✔" : "○", "Status", done ? (lewat ? "Selesai • tenggat lewat" : "Selesai") : "Belum selesai");
+  document.getElementById("modalTitle").textContent = "Detail Tugas";
+  document.getElementById("modalBody").innerHTML = `
+    <div class="detail-hero">${t.deadline?dateBadge(t.deadline):`<span class="date-badge"><span class="d">—</span></span>`}
+      <div><div class="dh-title">${esc(t.judul)}</div><div class="dh-sub">${esc(t.matkul||"Umum")}</div></div></div>
+    <div class="info-list">
+      ${infoRow("👥","Jenis", (t.tipe==="kelompok"?"Kelompok":"Individu") + (isPres?" · Presentasi":""))}
+      ${infoRow("🕑","Tenggat", (t.deadline?fmtTanggal(t.deadline)+" • ":"")+dl.txt)}
+      ${dosenNama?infoRow("👨‍🏫","Dosen",esc(dosenNama)):""}
+      ${t.deskripsi?infoRow("📝","Deskripsi",esc(t.deskripsi)):""}
+      ${statusHTML}
+      ${terkunci?infoRow("⏳","Catatan","Bisa ditandai saat pertemuan dimulai"+startLabelTugas(t)):""}
+      ${t.createdByNama?infoRow("✍","Dibuat oleh",esc(t.createdByNama)):""}
+    </div>
+    ${t.anggota && t.anggota.length ? `<div class="detail-sec"><h4>${isPres?"Presentasi":"Anggota"} (${t.anggota.length})</h4><div class="dtask"><div class="dtask-row"><div class="dtask-main"><div class="t" style="font-weight:500">${t.anggota.map(a=>esc(a.nama)).join(", ")}</div></div></div></div></div>` : ""}
+    <div class="modal-actions">
+      ${!isManager()?`<button class="btn ${mineDone?"ghost":"gold"}" id="tdToggle" ${terkunci?"disabled":""}>${mineDone?"↺ Batalkan":"✓ Tandai Selesai"}</button>`:`<button class="btn ${t.selesai?"ghost":"gold"}" id="tdDone">${t.selesai?"↺ Aktifkan kembali":"✓ Tandai Selesai"}</button>`}
+      ${me?`<button class="btn" id="tdEdit">✎ Edit</button>`:""}
+      ${canDel?`<button class="btn ghost" id="tdDel">Hapus</button>`:""}
+    </div>`;
+  openModal();
+  const tdToggle = document.getElementById("tdToggle"); if (tdToggle) tdToggle.onclick = () => { closeModal(); toggleTugas(t.id); };
+  const tdDone = document.getElementById("tdDone"); if (tdDone) tdDone.onclick = () => { closeModal(); toggleTugasDone(t.id); };
+  const tdEdit = document.getElementById("tdEdit"); if (tdEdit) tdEdit.onclick = () => openForm("tugas", t.id);
+  const tdDel = document.getElementById("tdDel"); if (tdDel) tdDel.onclick = () => hapus("tugas", t.id);
 }
 
 /* ============================================================
