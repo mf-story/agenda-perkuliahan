@@ -998,11 +998,16 @@ function openDetail(kind, id) {
             <div class="dtask-badges"><span class="badge ${t.tipe==="kelompok"?"sedang":"rendah"}">${t.tipe==="kelompok"?"Kelompok":"Individu"}</span>${isPres?`<span class="tag blue">Presentasi</span>`:""}${canT?`<button class="btn-icon" data-tedit="${t.id}" title="Edit tugas">✎</button>`:""}</div></div>`;
         }).join(""):'<div class="dtask-empty">Belum ada tugas untuk pertemuan ini.</div>'}</div>
       </div>
+      ${(p.dokumen && p.dokumen.length) ? `<div class="detail-sec"><h4>Dokumen Tugas</h4>
+        <div class="dtask-note">Bisa dipelajari semua peserta — mis. bahan diskusi saat presentasi.</div>
+        ${p.dokumen.map(d => `<div class="doc-group"><div class="doc-group-title">${esc(d.judul)}</div><div class="task-files">${d.lampiran.map(f=>attachCardHTML(f,"taskfile")).join("")}</div></div>`).join("")}
+      </div>` : ""}
       <div class="modal-actions">
         <button class="btn gold" data-addtugas="${p.id}" data-mk="${esc(p.matkul)}">＋ Tambah Tugas</button>
         ${isManager()?`<button class="btn ${p.status==="batal"?"ghost":""}" id="dStatus">${p.status==="batal"?"↺ Aktifkan kembali":"🚫 Tandai Tidak Masuk"}</button><button class="btn" id="dEdit">✎ Edit</button><button class="btn ghost" id="dDel">Hapus</button>`:""}
       </div>`;
     openModal();
+    document.querySelectorAll('#modalBody [data-pdf]').forEach(b => b.onclick = () => openChatFile(b.dataset.pdf, b.dataset.pdfname, b.dataset.ext, b.dataset.base));
     document.querySelector('[data-addtugas]').onclick = () => openForm("tugas", null, { pertemuanId: p.id, matkul: p.matkul });
     document.querySelectorAll('[data-tedit]').forEach(b => b.onclick = () => openForm("tugas", b.dataset.tedit));
     if (isManager()) {

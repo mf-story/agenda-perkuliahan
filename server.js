@@ -364,7 +364,8 @@ const server = http.createServer(async (req, res) => {
       if (!file.startsWith(UPLOAD_DIR) || !fs.existsSync(file)) { res.writeHead(404); return res.end("Not found"); }
       const tugas = (DB.tugas || []).find(t => Array.isArray(t.lampiran) && t.lampiran.some(f => f.name === name));
       if (!tugas) { res.writeHead(404); return res.end("Not found"); }
-      const relevan = isManager || (enrolled(me.id, tugas.matkul) && (tugas.tipe !== "kelompok" || !(tugas.anggota || []).length || tugas.anggota.some(a => a.id === me.id)));
+      // Dokumen tugas boleh dibuka semua peserta mata kuliah (lintas kelompok) sbg bahan belajar/diskusi.
+      const relevan = isManager || enrolled(me.id, tugas.matkul);
       if (!relevan) { res.writeHead(403); return res.end("Forbidden"); }
       const lamp = tugas.lampiran.find(f => f.name === name);
       const orig = (lamp && lamp.orig) || name;
@@ -495,7 +496,11 @@ const server = http.createServer(async (req, res) => {
             .filter(t => t.pertemuanId === p.id && (t.jenisKumpul === "presentasi" || t.jenisKumpul === "keduanya"))
             .flatMap(t => (t.anggota || []).map(a => userName(a.id) || a.nama))
             .filter(Boolean);
-          return { ...p, presentasi: [...new Set(presenters)] };
+          // Dokumen tugas (lampiran) pertemuan — terlihat semua peserta mata kuliah untuk bahan belajar/diskusi.
+          const dokumen = DB.tugas
+            .filter(t => t.pertemuanId === p.id && Array.isArray(t.lampiran) && t.lampiran.length)
+            .map(t => ({ tugasId: t.id, judul: t.judul, lampiran: t.lampiran }));
+          return { ...p, presentasi: [...new Set(presenters)], dokumen };
         });
         return sendJSON(res, 200, out);
       }

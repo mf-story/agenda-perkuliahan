@@ -564,6 +564,9 @@ body {
 .chat-file .cf-sub { font-size: .72rem; opacity: .75; }
 .task-files { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; }
 .task-files .chat-file { max-width: 340px; background: #f4f8ff; }
+.doc-group { margin-bottom: 10px; }
+.doc-group-title { font-size: .84rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+.dtask-note { font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
 .tfiles { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .tfile-chip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #eef5ff; border: 1px solid var(--line); border-radius: 10px; font-size: .84rem; }
 .tfile-chip .cf-ic { font-size: 1.1rem; }
