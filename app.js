@@ -205,6 +205,7 @@ function setChatDot(show) { const d = document.getElementById("chatDot"); if (d)
 function checkScheduleReminders() {
   const now = Date.now();
   (store.pertemuan || []).forEach(p => {
+    if (p.status === "batal") return; // pertemuan tidak masuk: tak perlu pengingat
     const ms = pertemuanStartMsP(p); if (!ms) return;
     const mins = (ms - now) / 60000;
     if (mins <= 30 && mins > -2) {  // 30 menit menjelang s/d 2 menit setelah mulai
