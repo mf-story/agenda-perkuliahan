@@ -192,6 +192,10 @@ body {
 .flag.tugas { background: #fef3c7; color: #92600a; border-color: #f3dfa0; }
 .flag.pres { background: #e0edff; color: #1d4ed8; border-color: #c7dbfb; }
 .flag.batal { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+.flag.moved { background: #fff1e0; color: #b45309; border-color: #fcd9a8; }
+.flag.moved-in { background: #dcfce7; color: #15803d; border-color: #a7e3bd; }
+.mcard.is-moved-out { opacity: .72; border-left-style: dashed; }
+.mcard.is-moved-out .mcard-title { text-decoration: line-through; text-decoration-color: rgba(180,83,9,.5); }
 .mcard.is-batal { border-left-color: var(--red); opacity: .9; }
 .mcard.is-batal .mcard-title { text-decoration: line-through; text-decoration-color: rgba(185,28,28,.6); }
 .mcard-meta .mi { display: inline-flex; align-items: center; gap: 5px; }

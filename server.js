@@ -522,7 +522,26 @@ const server = http.createServer(async (req, res) => {
       }
       const shape = () => ({ matkul: s(body.matkul), pertemuanKe: Number(body.pertemuanKe) || 1, tanggal: s(body.tanggal), waktu: s(body.waktu), selesai: s(body.selesai), topik: s(body.topik), pengampu: s(body.pengampu), catatan: s(body.catatan), mode: body.mode === "luring" ? "luring" : "daring", ruangan: s(body.ruangan), link: s(body.link), meetId: s(body.meetId), passcode: s(body.passcode) });
       if (method === "POST") { if (!body.matkul) return sendJSON(res, 400, { error: "Mata kuliah wajib" }); const it = { id: uid(), ...shape() }; DB.pertemuan.push(it); pushNotif("pertemuan", "Pertemuan baru", `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, it.matkul); sendPushToUsers(enrolledIds(it.matkul), { title: "Pertemuan baru", body: `Pertemuan ${it.pertemuanKe} — ${it.matkul}`, tag: "pertemuan" }); saveDB(); return sendJSON(res, 201, it); }
-      if (method === "PUT") { const i = DB.pertemuan.findIndex(x => x.id === id); if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" }); DB.pertemuan[i] = { ...DB.pertemuan[i], ...shape() }; saveDB(); return sendJSON(res, 200, DB.pertemuan[i]); }
+      if (method === "PUT") {
+        const i = DB.pertemuan.findIndex(x => x.id === id);
+        if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
+        const prev = DB.pertemuan[i];
+        const next = { ...prev, ...shape() };
+        const timeChanged = prev.tanggal !== next.tanggal || prev.waktu !== next.waktu || prev.selesai !== next.selesai;
+        if (timeChanged) {
+          // Simpan jadwal asal pertama kali dipindah; pertahankan yang sudah ada.
+          const asal = prev.jadwalAsal || { tanggal: prev.tanggal, waktu: prev.waktu, selesai: prev.selesai };
+          if (asal.tanggal === next.tanggal && asal.waktu === next.waktu && asal.selesai === next.selesai) {
+            delete next.jadwalAsal; // dikembalikan ke jadwal asli
+          } else {
+            next.jadwalAsal = asal;
+            const _b = `Pertemuan ${next.pertemuanKe} — ${next.matkul} dipindah ke ${next.tanggal}${next.waktu ? " " + next.waktu : ""}`;
+            pushNotif("pertemuan", "Jadwal dipindahkan", _b, next.matkul);
+            sendPushToUsers(enrolledIds(next.matkul), { title: "Jadwal dipindahkan", body: _b, tag: "pertemuan" });
+          }
+        }
+        DB.pertemuan[i] = next; saveDB(); return sendJSON(res, 200, DB.pertemuan[i]);
+      }
       if (method === "DELETE") { DB.pertemuan = DB.pertemuan.filter(x => x.id !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
     }
 

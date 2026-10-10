@@ -419,10 +419,15 @@ function render() {
    ============================================================ */
 function agendaEvents() {
   const ev = [];
-  store.pertemuan.forEach(p => ev.push({
-    kind: "pertemuan", id: p.id, label: `Pertemuan ${p.pertemuanKe}`, title: p.matkul, topik: p.topik,
-    date: p.tanggal, time: jamRange(p.waktu, p.selesai), matkul: p.matkul, dosen: p.pengampu, mode: p.mode, ruangan: p.ruangan, raw: p
-  }));
+  store.pertemuan.forEach(p => {
+    const base = { kind: "pertemuan", id: p.id, label: `Pertemuan ${p.pertemuanKe}`, title: p.matkul, topik: p.topik, matkul: p.matkul, dosen: p.pengampu, mode: p.mode, ruangan: p.ruangan, raw: p };
+    if (p.jadwalAsal && p.jadwalAsal.tanggal) {
+      ev.push({ ...base, date: p.jadwalAsal.tanggal, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai), moved: "out", movedTo: { date: p.tanggal, time: jamRange(p.waktu, p.selesai) } });
+      ev.push({ ...base, date: p.tanggal, time: jamRange(p.waktu, p.selesai), moved: "in", movedFrom: { date: p.jadwalAsal.tanggal, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai) } });
+    } else {
+      ev.push({ ...base, date: p.tanggal, time: jamRange(p.waktu, p.selesai) });
+    }
+  });
   store.agenda.forEach(a => ev.push({
     kind: "kegiatan", id: a.id, label: a.kategori || "Kegiatan", title: a.judul, date: a.tanggal, time: a.waktu,
     lokasi: a.lokasi, kategori: a.kategori, tipe: a.tipe, owner: a.ownerNama, raw: a
@@ -467,10 +472,12 @@ function cardHTML(e) {
     }
   }
   if (batal) flags = `<span class="flag batal">🚫 Tidak Masuk${e.raw.statusNote?" · "+esc(e.raw.statusNote):""}</span>` + flags;
+  if (e.moved === "out") flags = `<span class="flag moved">↪ Dipindahkan ke ${esc(fmtTanggal(e.movedTo.date))}${e.movedTo.time?" · "+esc(e.movedTo.time):""}</span>` + flags;
+  else if (e.moved === "in") flags = `<span class="flag moved-in">📅 Jadwal pindahan dari ${esc(fmtTanggal(e.movedFrom.date))}${e.movedFrom.time?" · "+esc(e.movedFrom.time):""}</span>` + flags;
   const meta = e.kind === "pertemuan"
     ? `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.mode==="luring" ? (e.ruangan?`<span class="mi">📍 ${esc(e.ruangan)}</span>`:"") : `<span class="mi">💻 Daring</span>`}${e.dosen?`<span class="mi">👤 ${esc(e.dosen)}</span>`:""}${e.topik?`<span class="mi">📖 ${esc(e.topik)}</span>`:""}`
     : `${e.time?`<span class="mi">🕑 ${esc(e.time)}</span>`:""}${e.kategori==="Tugas"&&e.tipe?`<span class="mi"><span class="badge ${e.tipe==="kelompok"?"sedang":"rendah"}">${e.tipe==="kelompok"?"Kelompok":"Individu"}</span></span>`:""}${e.lokasi?`<span class="mi">📍 ${esc(e.lokasi)}</span>`:""}${e.owner?`<span class="mi">✍ ${esc(e.owner)}</span>`:""}`;
-  return `<div class="mcard k-${past?"selesai":e.kind}${batal?" is-batal":""}" data-detail="${e.kind}:${e.id}">
+  return `<div class="mcard k-${past?"selesai":e.kind}${batal?" is-batal":""}${e.moved==="out"?" is-moved-out":""}" data-detail="${e.kind}:${e.id}">
     <div class="mcard-head">
       <div class="mcard-headmain"><span class="pill">${esc(e.label)}</span><div class="mcard-title">${esc(e.title)}</div></div>
       ${badge}
@@ -486,7 +493,12 @@ function cardHTML(e) {
 function eventsByDate() {
   const map = {};
   const add = (iso, item) => { if (!iso) return; (map[iso] = map[iso] || []).push(item); };
-  store.pertemuan.forEach(p => add(p.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai) }));
+  store.pertemuan.forEach(p => {
+    add(p.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai), moved: (p.jadwalAsal && p.jadwalAsal.tanggal) ? "in" : "" });
+    if (p.jadwalAsal && p.jadwalAsal.tanggal && p.jadwalAsal.tanggal !== p.tanggal) {
+      add(p.jadwalAsal.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai), moved: "out" });
+    }
+  });
   store.agenda.forEach(a => add(a.tanggal, { t: "kegiatan", id: a.id, title: a.judul, time: a.waktu }));
   store.tugas.forEach(t => add(t.deadline, { t: "tugas", id: t.id, title: "Tenggat: " + t.judul, time: "" }));
   return map;
@@ -979,6 +991,7 @@ function openDetail(kind, id) {
         <div><div class="dh-title">Pertemuan ${esc(p.pertemuanKe)}</div><div class="dh-sub">${esc(p.matkul)}</div></div></div>
       <div class="info-list">
         ${p.status==="batal"?infoRow("🚫","Status",`<b style="color:var(--red)">Tidak Masuk</b>${p.statusNote?" · "+esc(p.statusNote):""}`):""}
+        ${(p.jadwalAsal && p.jadwalAsal.tanggal)?infoRow("↪","Dipindahkan",`Dari <b>${esc(fmtTanggal(p.jadwalAsal.tanggal))}${p.jadwalAsal.waktu?" "+esc(p.jadwalAsal.waktu):""}</b> ke <b>${esc(fmtTanggal(p.tanggal))}${p.waktu?" "+esc(p.waktu):""}</b>`):""}
         ${p.topik?infoRow("📖","Topik",esc(p.topik)):""}
         ${infoRow("🗓️","Tanggal",fmtTanggal(p.tanggal)||"-")}
         ${infoRow("🕑","Waktu",esc(jamRange(p.waktu,p.selesai)||"-"))}
