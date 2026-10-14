@@ -130,6 +130,7 @@ async function afterLogin() {
   clearInterval(window._notifTimer);
   clearInterval(window._pollTimer);
   window._pollTimer = setInterval(pollUpdates, 20000);
+  pollUpdates(); // cek langsung tanda obrolan belum dibaca (tanpa menunggu 20 detik)
 }
 async function doLogin(u, p) { initAudio(); const r = await api("/login", "POST", { username: u, password: p }); token = r.token; me = r.user; localStorage.setItem(TOKEN_KEY, token); await afterLogin(); }
 function logout() { token = null; me = null; localStorage.removeItem(TOKEN_KEY); clearInterval(window._notifTimer); clearInterval(window._chatTimer); clearInterval(window._pollTimer); closeModal(); showLogin(); }
@@ -149,7 +150,7 @@ async function loadNotif() {
 /* ---------- Notifikasi HP (PWA) + suara + pengingat jadwal ---------- */
 let lastNotifTs = 0, lastChatTs = 0, _audioCtx = null;
 // Waktu terakhir obrolan dibuka (persisten) — untuk tanda obrolan belum dibaca lintas channel.
-let lastChatSeenTs = (() => { const v = localStorage.getItem("agenda_chat_seen"); if (v === null) { const t = Date.now(); localStorage.setItem("agenda_chat_seen", String(t)); return t; } return Number(v) || 0; })();
+let lastChatSeenTs = (() => { const v = localStorage.getItem("agenda_chat_seen"); return v === null ? 0 : (Number(v) || 0); })();
 function markChatSeen() { lastChatSeenTs = Date.now(); try { localStorage.setItem("agenda_chat_seen", String(lastChatSeenTs)); } catch {} }
 const notifiedSched = new Set(JSON.parse(localStorage.getItem("agenda_notified_sched") || "[]"));
 function saveNotifiedSched() { try { localStorage.setItem("agenda_notified_sched", JSON.stringify([...notifiedSched].slice(-300))); } catch {} }
