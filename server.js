@@ -640,6 +640,16 @@ const server = http.createServer(async (req, res) => {
     // ---------- CHAT (channel: kelas | dm | tugas) ----------
     if (resource === "chat") {
       const q = new URLSearchParams(qs || "");
+      // Pesan terbaru lintas-channel (untuk penanda obrolan belum dibaca)
+      if (method === "GET" && id === "latest") {
+        let ts = 0;
+        for (const m of (DB.chat || [])) {
+          if (m.userId === me.id) continue;
+          if (m.ts <= ts) continue;
+          if (canAccessChannel(me, m.channel || "kelas")) ts = m.ts;
+        }
+        return sendJSON(res, 200, { ts });
+      }
       if (method === "GET") {
         const channel = q.get("channel") || "kelas";
         if (!canAccessChannel(me, channel)) return sendJSON(res, 403, { error: "Tidak punya akses ke obrolan ini" });

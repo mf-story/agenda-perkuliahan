@@ -148,6 +148,9 @@ async function loadNotif() {
 
 /* ---------- Notifikasi HP (PWA) + suara + pengingat jadwal ---------- */
 let lastNotifTs = 0, lastChatTs = 0, _audioCtx = null;
+// Waktu terakhir obrolan dibuka (persisten) — untuk tanda obrolan belum dibaca lintas channel.
+let lastChatSeenTs = (() => { const v = localStorage.getItem("agenda_chat_seen"); if (v === null) { const t = Date.now(); localStorage.setItem("agenda_chat_seen", String(t)); return t; } return Number(v) || 0; })();
+function markChatSeen() { lastChatSeenTs = Date.now(); try { localStorage.setItem("agenda_chat_seen", String(lastChatSeenTs)); } catch {} }
 const notifiedSched = new Set(JSON.parse(localStorage.getItem("agenda_notified_sched") || "[]"));
 function saveNotifiedSched() { try { localStorage.setItem("agenda_notified_sched", JSON.stringify([...notifiedSched].slice(-300))); } catch {} }
 function initAudio() {
@@ -244,6 +247,13 @@ async function pollUpdates() {
     }
     if (newest) lastChatTs = Math.max(lastChatTs, newest);
   } catch {}
+  // Tanda obrolan belum dibaca — lintas semua channel yang bisa diakses.
+  try {
+    const { ts } = await api("/chat/latest");
+    const viewingChat = currentView === "chat" && document.visibilityState === "visible";
+    if (viewingChat) markChatSeen();
+    else if (ts && ts > lastChatSeenTs) setChatDot(true);
+  } catch {}
   try { store._online = await api("/online"); if (currentView === "chat") renderOnline(); } catch {}
   checkScheduleReminders();
 }
@@ -315,6 +325,7 @@ function setView(v) {
   window.scrollTo(0, 0);
   clearInterval(window._chatTimer);
   if (v === "chat") {
+    markChatSeen();
     setChatDot(false);
     scrollChatBottom();
     const ci = document.getElementById("chatInput"); if (ci) ci.focus();
