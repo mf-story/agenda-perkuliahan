@@ -309,6 +309,7 @@ async function loadData() {
     ]);
     Object.assign(store, { matkul, jadwal, tugas, agenda, catatan, pertemuan, kelompok });
     if (isAdmin()) { try { store.users = await api("/users"); } catch {} }
+    if (isManager()) { try { store.dosen = await api("/dosen"); } catch {} }
     try { store.mahasiswa = await api("/mahasiswa"); } catch {}
     try { store.directory = await api("/directory"); } catch {}
   } catch (e) { toast(e.message); }
@@ -1262,7 +1263,9 @@ function openForm(tipe, id, preset) {
       <div class="field-row"><div class="field"><label>Meeting ID</label><input name="meetId" value="${esc(data.meetId||"")}" placeholder="988 2520 1146"></div><div class="field"><label>Passcode</label><input name="passcode" value="${esc(data.passcode||"")}" placeholder="passcode"></div></div>
     </div>
     <div class="field"><label>Topik</label><input name="topik" value="${esc(data.topik||"")}"></div>
-    <div class="field"><label>Dosen Pengampu</label><input name="pengampu" value="${esc(data.pengampu||"")}"></div>
+    <div class="field"><label>Akun Dosen Pertemuan Ini <span style="color:var(--muted);font-weight:400">(dosen ini bisa melihat & mengelola pertemuan ini)</span></label>
+      <select name="pengampuId" id="mPengampuP"><option value="">— Tidak ditentukan —</option>${[...(store.dosen||[])].sort((a,b)=>a.nama.localeCompare(b.nama)).map(u=>`<option value="${esc(u.id)}" ${data.pengampuId===u.id?"selected":""}>${esc(u.nama)} (@${esc(u.username)})</option>`).join("")}</select></div>
+    <div class="field"><label>Dosen Pengampu (nama tampilan)</label><input name="pengampu" value="${esc(data.pengampu||"")}"></div>
     <div class="field"><label>Catatan</label><textarea name="catatan">${esc(data.catatan||"")}</textarea></div>`;
   else if (tipe === "kelompok") b = `
     <div class="field"><label>Nama Kelompok</label><input name="nama" value="${esc(data.nama||"")}" placeholder="Kelompok 1"></div>
@@ -1279,7 +1282,7 @@ function openForm(tipe, id, preset) {
     <div class="field"><label>Dosen Pengampu (nama tampilan)</label><input name="dosen" value="${esc(data.dosen||"")}"></div>
     ${isAdmin() ? `<div class="field"><label>Akun Dosen Pengampu <span style="color:var(--muted);font-weight:400">(hanya mereka yang melihat mata kuliah ini)</span></label>
       <div id="mPengampu" style="max-height:30vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px">${
-        [...(store.users||[])].filter(u=>u.role==="dosen").sort((a,b)=>a.nama.localeCompare(b.nama)).map(u=>`<label style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #f1f5fb;font-size:.88rem">
+        [...(store.dosen||[])].sort((a,b)=>a.nama.localeCompare(b.nama)).map(u=>`<label style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #f1f5fb;font-size:.88rem">
           <input type="checkbox" value="${esc(u.id)}" ${(data.pengampuIds||[]).includes(u.id)?"checked":""} style="width:auto"><span><b>${esc(u.nama)}</b> <span style="color:var(--muted);font-size:.76rem">@${esc(u.username)}</span></span></label>`).join("") || '<div class="progress-meta" style="padding:8px">Belum ada akun dosen.</div>'
       }</div></div>` : ""}`;
   else if (tipe === "agenda") b = `
@@ -1306,6 +1309,12 @@ function openForm(tipe, id, preset) {
     const luring = pm.value === "luring";
     document.getElementById("mPLuring").style.display = luring ? "" : "none";
     document.getElementById("mPDaring").style.display = luring ? "none" : "";
+  };
+  const pp = document.getElementById("mPengampuP");
+  if (pp) pp.onchange = () => {
+    const u = (store.dosen || []).find(x => x.id === pp.value);
+    const txt = document.querySelector('#modalBody [name="pengampu"]');
+    if (u && txt) txt.value = u.nama; // selaraskan nama tampilan dengan akun yang dipilih
   };
   document.getElementById("fCancel").onclick = closeModal;
   document.getElementById("fSave").onclick = () => simpanForm(tipe, id);
