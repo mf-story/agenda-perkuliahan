@@ -444,7 +444,7 @@ const server = http.createServer(async (req, res) => {
 
     // ---------- JADWAL ----------
     if (resource === "jadwal") {
-      if (method === "GET") return sendJSON(res, 200, DB.jadwal);
+      if (method === "GET") return sendJSON(res, 200, isDosen ? DB.jadwal.filter(j => teaches(me.id, j.matkul)) : DB.jadwal);
       if (!isManager) return sendJSON(res, 403, { error: "Hanya dosen/admin yang dapat mengelola jadwal" });
       const shape = () => ({ matkul: s(body.matkul), hari: s(body.hari), mulai: s(body.mulai), selesai: s(body.selesai), ruang: s(body.ruang), dosen: s(body.dosen), mode: s(body.mode) || "Luring" });
       if (method === "POST") { if (!body.matkul) return sendJSON(res, 400, { error: "Mata kuliah wajib" }); const it = { id: uid(), ...shape() }; DB.jadwal.push(it); saveDB(); return sendJSON(res, 201, it); }
@@ -478,10 +478,11 @@ const server = http.createServer(async (req, res) => {
           saveDB(); return sendJSON(res, 200, { peserta: m.peserta });
         }
       }
-      if (method === "GET") return sendJSON(res, 200, DB.matkul);
+      if (method === "GET") return sendJSON(res, 200, isDosen ? DB.matkul.filter(m => (m.pengampuIds || []).includes(me.id)) : DB.matkul);
       if (!isManager) return sendJSON(res, 403, { error: "Hanya dosen/admin yang dapat mengelola mata kuliah" });
-      if (method === "POST") { const it = { id: uid(), nama: s(body.nama), kode: s(body.kode), sks: Number(body.sks) || 0, dosen: s(body.dosen), peserta: [] }; if (!it.nama) return sendJSON(res, 400, { error: "Nama wajib" }); DB.matkul.push(it); saveDB(); return sendJSON(res, 201, it); }
-      if (method === "PUT") { const i = DB.matkul.findIndex(x => x.id === id); if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" }); DB.matkul[i] = { ...DB.matkul[i], nama: s(body.nama), kode: s(body.kode), sks: Number(body.sks) || 0, dosen: s(body.dosen) }; saveDB(); return sendJSON(res, 200, DB.matkul[i]); }
+      const dosenValid = new Set(DB.users.filter(u => u.role === "dosen").map(u => u.id));
+      if (method === "POST") { let pengampuIds = (Array.isArray(body.pengampuIds) ? body.pengampuIds : []).filter(x => dosenValid.has(x)); if (isDosen && !pengampuIds.includes(me.id)) pengampuIds.push(me.id); const it = { id: uid(), nama: s(body.nama), kode: s(body.kode), sks: Number(body.sks) || 0, dosen: s(body.dosen), peserta: [], pengampuIds }; if (!it.nama) return sendJSON(res, 400, { error: "Nama wajib" }); DB.matkul.push(it); saveDB(); return sendJSON(res, 201, it); }
+      if (method === "PUT") { const i = DB.matkul.findIndex(x => x.id === id); if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" }); const pengampuIds = Array.isArray(body.pengampuIds) ? body.pengampuIds.filter(x => dosenValid.has(x)) : (DB.matkul[i].pengampuIds || []); DB.matkul[i] = { ...DB.matkul[i], nama: s(body.nama), kode: s(body.kode), sks: Number(body.sks) || 0, dosen: s(body.dosen), pengampuIds }; saveDB(); return sendJSON(res, 200, DB.matkul[i]); }
       if (method === "DELETE") { DB.matkul = DB.matkul.filter(x => x.id !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }
     }
 
@@ -489,7 +490,8 @@ const server = http.createServer(async (req, res) => {
     if (resource === "pertemuan") {
       if (method === "GET") {
         let list = DB.pertemuan;
-        if (!isManager) list = list.filter(p => enrolled(me.id, p.matkul));
+        if (isDosen) list = list.filter(p => teaches(me.id, p.matkul));
+        else if (!isManager) list = list.filter(p => enrolled(me.id, p.matkul));
         // Sertakan daftar penyaji (dari tugas presentasi) agar tampil ke semua peserta.
         const out = list.map(p => {
           const presenters = DB.tugas
@@ -566,8 +568,9 @@ const server = http.createServer(async (req, res) => {
       }
       if (method === "GET") {
         let list = DB.tugas;
+        if (isDosen) list = list.filter(t => teaches(me.id, t.matkul));
         // Mahasiswa: hanya tugas matkul yang diikuti; tugas kelompok hanya jika ditandai sebagai anggota.
-        if (!isManager) list = list.filter(t => {
+        else if (!isManager) list = list.filter(t => {
           if (!enrolled(me.id, t.matkul)) return false;
           if (t.tipe === "kelompok" && Array.isArray(t.anggota) && t.anggota.length) return t.anggota.some(a => a.id === me.id);
           return true;
@@ -777,6 +780,11 @@ function enrolled(userId, nama) {
   const m = DB.matkul.find(x => x.nama === nama);
   if (!m || !Array.isArray(m.peserta) || m.peserta.length === 0) return true;
   return m.peserta.includes(userId);
+}
+// Apakah seorang dosen mengampu mata kuliah ini (berdasarkan penugasan admin).
+function teaches(userId, nama) {
+  const m = DB.matkul.find(x => x.nama === nama);
+  return !!(m && Array.isArray(m.pengampuIds) && m.pengampuIds.includes(userId));
 }
 // ---- Channel chat: kelas | dm:<idA>:<idB> | tugas:<tugasId> ----
 function canAccessChannel(user, channel) {

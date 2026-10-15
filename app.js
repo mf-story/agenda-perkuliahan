@@ -1276,7 +1276,12 @@ function openForm(tipe, id, preset) {
   else if (tipe === "matkul") b = `
     <div class="field"><label>Nama Mata Kuliah</label><input name="nama" value="${esc(data.nama||"")}"></div>
     <div class="field-row"><div class="field"><label>Kode</label><input name="kode" value="${esc(data.kode||"")}"></div><div class="field"><label>SKS</label><input type="number" name="sks" min="0" max="12" value="${esc(data.sks??3)}"></div></div>
-    <div class="field"><label>Dosen Pengampu</label><input name="dosen" value="${esc(data.dosen||"")}"></div>`;
+    <div class="field"><label>Dosen Pengampu (nama tampilan)</label><input name="dosen" value="${esc(data.dosen||"")}"></div>
+    ${isAdmin() ? `<div class="field"><label>Akun Dosen Pengampu <span style="color:var(--muted);font-weight:400">(hanya mereka yang melihat mata kuliah ini)</span></label>
+      <div id="mPengampu" style="max-height:30vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px">${
+        [...(store.users||[])].filter(u=>u.role==="dosen").sort((a,b)=>a.nama.localeCompare(b.nama)).map(u=>`<label style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #f1f5fb;font-size:.88rem">
+          <input type="checkbox" value="${esc(u.id)}" ${(data.pengampuIds||[]).includes(u.id)?"checked":""} style="width:auto"><span><b>${esc(u.nama)}</b> <span style="color:var(--muted);font-size:.76rem">@${esc(u.username)}</span></span></label>`).join("") || '<div class="progress-meta" style="padding:8px">Belum ada akun dosen.</div>'
+      }</div></div>` : ""}`;
   else if (tipe === "agenda") b = `
     <div class="field"><label>Kategori</label><select name="kategori" id="mAgKat">${["Bimbingan","Seminar","Ujian","Kuliah","Rapat","Tugas","Lainnya"].map(k=>`<option ${data.kategori===k?"selected":""}>${k}</option>`).join("")}</select></div>
     <div class="field"><label>Judul Kegiatan</label><input name="judul" value="${esc(data.judul||"")}" placeholder="mis. Bimbingan / Seminar / Tugas"></div>
@@ -1434,8 +1439,7 @@ async function simpanForm(tipe, id) {
   if (tipe==="matkul" && !f.nama) return toast("Nama mata kuliah wajib");
   if (tipe==="kelompok" && !f.nama) return toast("Nama kelompok wajib");
   if (tipe==="users") { if (!f.nama || (!id && !f.username)) return toast("Nama & username wajib"); if (!id && (!f.password || f.password.length<6)) return toast("Password minimal 6 karakter"); }
-  if (tipe==="matkul") f.sks = Number(f.sks)||0;
-  if (tipe==="jadwal") f.semester = Number(f.semester)||1;
+  if (tipe==="matkul") { f.sks = Number(f.sks)||0; const pc = document.getElementById("mPengampu"); if (pc) f.pengampuIds = Array.from(pc.querySelectorAll("input:checked")).map(i => i.value); }  if (tipe==="jadwal") f.semester = Number(f.semester)||1;
   if (tipe==="tugas") {
     const cont = document.getElementById("mAnggota");
     f.anggota = (f.tipe === "kelompok" && cont) ? Array.from(cont.querySelectorAll("input:checked")).map(i => ({ id: i.value, nama: i.dataset.nama || "" })) : [];
