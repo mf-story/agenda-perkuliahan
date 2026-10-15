@@ -59,6 +59,8 @@ function ensureSeedAccounts() {
   let c2 = false;
   for (const k of ["pertemuan", "kelompok", "notifications", "chat"]) if (!Array.isArray(DB[k])) { DB[k] = []; c2 = true; }
   if (!Array.isArray(DB.pushSubs)) { DB.pushSubs = []; c2 = true; }
+  // Migrasi: hapus jadwalAsal keliru (tanggal & jam mulai sama dgn jadwal berjalan).
+  (DB.pertemuan || []).forEach(p => { if (p.jadwalAsal && p.jadwalAsal.tanggal === p.tanggal && p.jadwalAsal.waktu === p.waktu) { delete p.jadwalAsal; c2 = true; } });
   if (c2) saveNow();
 }
 let saveTimer = null;
@@ -534,12 +536,12 @@ const server = http.createServer(async (req, res) => {
         if (i < 0) return sendJSON(res, 404, { error: "Tidak ditemukan" });
         const prev = DB.pertemuan[i];
         const next = { ...prev, ...shape() };
-        const timeChanged = prev.tanggal !== next.tanggal || prev.waktu !== next.waktu || prev.selesai !== next.selesai;
+        // "Dipindahkan" hanya jika TANGGAL atau JAM MULAI berubah (ubah jam selesai saja bukan pindah).
+        const timeChanged = prev.tanggal !== next.tanggal || prev.waktu !== next.waktu;
         if (timeChanged) {
-          // Simpan jadwal asal pertama kali dipindah; pertahankan yang sudah ada.
           const asal = prev.jadwalAsal || { tanggal: prev.tanggal, waktu: prev.waktu, selesai: prev.selesai };
-          if (asal.tanggal === next.tanggal && asal.waktu === next.waktu && asal.selesai === next.selesai) {
-            delete next.jadwalAsal; // dikembalikan ke jadwal asli
+          if (asal.tanggal === next.tanggal && asal.waktu === next.waktu) {
+            delete next.jadwalAsal; // kembali ke tanggal & jam mulai asli
           } else {
             next.jadwalAsal = asal;
             const _b = `Pertemuan ${next.pertemuanKe} — ${next.matkul} dipindah ke ${next.tanggal}${next.waktu ? " " + next.waktu : ""}`;
@@ -547,6 +549,8 @@ const server = http.createServer(async (req, res) => {
             sendPushToUsers(enrolledIds(next.matkul), { title: "Jadwal dipindahkan", body: _b, tag: "pertemuan" });
           }
         }
+        // Bersihkan jadwalAsal yang tak lagi berbeda (mis. data lama keliru).
+        if (next.jadwalAsal && next.jadwalAsal.tanggal === next.tanggal && next.jadwalAsal.waktu === next.waktu) delete next.jadwalAsal;
         DB.pertemuan[i] = next; saveDB(); return sendJSON(res, 200, DB.pertemuan[i]);
       }
       if (method === "DELETE") { DB.pertemuan = DB.pertemuan.filter(x => x.id !== id); saveDB(); return sendJSON(res, 200, { ok: true }); }

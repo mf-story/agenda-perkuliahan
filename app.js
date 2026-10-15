@@ -419,6 +419,8 @@ function updateChrome() {
   }
 }
 function statHTML(n, l, accent) { return `<div class="stat ${accent?"accent":""}"><div class="stat-num">${n}</div><div class="stat-lbl">${l}</div></div>`; }
+// Pertemuan dianggap "dipindahkan" hanya jika tanggal ATAU jam mulai berbeda dari jadwal asalnya.
+function pertemuanMoved(p) { return !!(p && p.jadwalAsal && p.jadwalAsal.tanggal && (p.jadwalAsal.tanggal !== p.tanggal || p.jadwalAsal.waktu !== p.waktu)); }
 
 /* ---------- Render dispatcher ---------- */
 function render() {
@@ -435,7 +437,7 @@ function agendaEvents() {
   const ev = [];
   store.pertemuan.forEach(p => {
     const base = { kind: "pertemuan", id: p.id, label: `Pertemuan ${p.pertemuanKe}`, title: p.matkul, topik: p.topik, matkul: p.matkul, dosen: p.pengampu, mode: p.mode, ruangan: p.ruangan, raw: p };
-    if (p.jadwalAsal && p.jadwalAsal.tanggal) {
+    if (pertemuanMoved(p)) {
       ev.push({ ...base, date: p.jadwalAsal.tanggal, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai), moved: "out", movedTo: { date: p.tanggal, time: jamRange(p.waktu, p.selesai) } });
       ev.push({ ...base, date: p.tanggal, time: jamRange(p.waktu, p.selesai), moved: "in", movedFrom: { date: p.jadwalAsal.tanggal, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai) } });
     } else {
@@ -508,8 +510,9 @@ function eventsByDate() {
   const map = {};
   const add = (iso, item) => { if (!iso) return; (map[iso] = map[iso] || []).push(item); };
   store.pertemuan.forEach(p => {
-    add(p.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai), moved: (p.jadwalAsal && p.jadwalAsal.tanggal) ? "in" : "" });
-    if (p.jadwalAsal && p.jadwalAsal.tanggal && p.jadwalAsal.tanggal !== p.tanggal) {
+    const moved = pertemuanMoved(p);
+    add(p.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.waktu, p.selesai), moved: moved ? "in" : "" });
+    if (moved && p.jadwalAsal.tanggal !== p.tanggal) {
       add(p.jadwalAsal.tanggal, { t: "pertemuan", id: p.id, title: `P${p.pertemuanKe} ${p.matkul}`, time: jamRange(p.jadwalAsal.waktu, p.jadwalAsal.selesai), moved: "out" });
     }
   });
@@ -1005,7 +1008,7 @@ function openDetail(kind, id) {
         <div><div class="dh-title">Pertemuan ${esc(p.pertemuanKe)}</div><div class="dh-sub">${esc(p.matkul)}</div></div></div>
       <div class="info-list">
         ${p.status==="batal"?infoRow("🚫","Status",`<b style="color:var(--red)">Tidak Masuk</b>${p.statusNote?" · "+esc(p.statusNote):""}`):""}
-        ${(p.jadwalAsal && p.jadwalAsal.tanggal)?infoRow("↪","Dipindahkan",`Dari <b>${esc(fmtTanggal(p.jadwalAsal.tanggal))}${p.jadwalAsal.waktu?" "+esc(p.jadwalAsal.waktu):""}</b> ke <b>${esc(fmtTanggal(p.tanggal))}${p.waktu?" "+esc(p.waktu):""}</b>`):""}
+        ${(p.jadwalAsal && pertemuanMoved(p))?infoRow("↪","Dipindahkan",`Dari <b>${esc(fmtTanggal(p.jadwalAsal.tanggal))}${p.jadwalAsal.waktu?" "+esc(p.jadwalAsal.waktu):""}</b> ke <b>${esc(fmtTanggal(p.tanggal))}${p.waktu?" "+esc(p.waktu):""}</b>`):""}
         ${p.topik?infoRow("📖","Topik",esc(p.topik)):""}
         ${infoRow("🗓️","Tanggal",fmtTanggal(p.tanggal)||"-")}
         ${infoRow("🕑","Waktu",esc(jamRange(p.waktu,p.selesai)||"-"))}
