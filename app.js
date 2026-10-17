@@ -90,10 +90,10 @@ function labelDeadline(iso) {
 }
 function initial(n) { return (n || "?").trim().charAt(0).toUpperCase(); }
 function kelompokNama(id) { const k = store.kelompok.find(x => x.id === id); return k ? k.nama : ""; }
-function weekBounds() {
+function weekBounds(offset = 0) {
   const t = new Date(); t.setHours(0,0,0,0);
   const dow = (t.getDay() + 6) % 7; // Senin=0
-  const start = new Date(t); start.setDate(t.getDate() - dow);
+  const start = new Date(t); start.setDate(t.getDate() - dow + offset * 7);
   const end = new Date(start); end.setDate(start.getDate() + 6);
   const iso = d => d.toISOString().slice(0, 10);
   return [iso(start), iso(end)];
@@ -379,7 +379,7 @@ function updateChrome() {
   // chips
   const chips = document.getElementById("chips");
   if (onAgenda) {
-    const timeChips = [["pekan","Pekan ini"],["hari","Hari ini"],["lampau","Lampau"],["semua","Semua"]];
+    const timeChips = [["pekan","Pekan ini"],["pekandepan","Pekan depan"],["hari","Hari ini"],["lampau","Lampau"],["semua","Semua"]];
     const typeChips = [["semua","Semua jenis"],["pertemuan","Pertemuan"],["kegiatan","Kegiatan"]];
     chips.innerHTML =
       timeChips.map(([k,l]) => `<button class="chip ${agendaTime===k?"is-active":""}" data-ct="time" data-k="${k}">${l}</button>`).join("") +
@@ -421,6 +421,17 @@ function updateChrome() {
 function statHTML(n, l, accent) { return `<div class="stat ${accent?"accent":""}"><div class="stat-num">${n}</div><div class="stat-lbl">${l}</div></div>`; }
 // Pertemuan dianggap "dipindahkan" hanya jika tanggal ATAU jam mulai berbeda dari jadwal asalnya.
 function pertemuanMoved(p) { return !!(p && p.jadwalAsal && p.jadwalAsal.tanggal && (p.jadwalAsal.tanggal !== p.tanggal || p.jadwalAsal.waktu !== p.waktu)); }
+// Sudah lewat jika tanggalnya < hari ini, atau hari ini tapi jam selesai sudah terlewati.
+function eventEndPassed(e) {
+  if (!e || !e.date) return false;
+  const diff = selisihHari(e.date);
+  if (diff < 0) return true;
+  if (diff > 0) return false;
+  const m = (e.time || "").match(/(\d{1,2}):(\d{2})\s*$/);
+  if (!m) return false;
+  const now = new Date();
+  return (now.getHours() * 60 + now.getMinutes()) > (parseInt(m[1], 10) * 60 + parseInt(m[2], 10));
+}
 
 /* ---------- Render dispatcher ---------- */
 function render() {
@@ -456,6 +467,7 @@ function renderAgenda() {
   if (filterMhs) ev = ev.filter(e => e.kind !== "pertemuan" || mhsEnrolled(filterMhs, e.matkul));
   if (agendaType !== "semua") ev = ev.filter(e => e.kind === agendaType);
   if (agendaTime === "pekan") { const [ws, we] = weekBounds(); ev = ev.filter(e => e.date && e.date >= ws && e.date <= we); }
+  else if (agendaTime === "pekandepan") { const [ws, we] = weekBounds(1); ev = ev.filter(e => e.date && e.date >= ws && e.date <= we); }
   else if (agendaTime === "hari") ev = ev.filter(e => e.date && selisihHari(e.date) === 0);
   else if (agendaTime === "lampau") ev = ev.filter(e => e.date && selisihHari(e.date) < 0);
   if (searchTerm) {
@@ -488,6 +500,8 @@ function cardHTML(e) {
     }
   }
   if (batal) flags = `<span class="flag batal">🚫 Tidak Masuk${e.raw.statusNote?" · "+esc(e.raw.statusNote):""}</span>` + flags;
+  const selesai = e.kind === "pertemuan" && !batal && e.moved !== "out" && eventEndPassed(e);
+  if (selesai) flags = `<span class="flag selesai">✅ Selesai</span>` + flags;
   if (e.moved === "out") flags = `<span class="flag moved">↪ Dipindahkan ke ${esc(fmtTanggal(e.movedTo.date))}${e.movedTo.time?" · "+esc(e.movedTo.time):""}</span>` + flags;
   else if (e.moved === "in") flags = `<span class="flag moved-in">📅 Jadwal pindahan dari ${esc(fmtTanggal(e.movedFrom.date))}${e.movedFrom.time?" · "+esc(e.movedFrom.time):""}</span>` + flags;
   const meta = e.kind === "pertemuan"
@@ -603,7 +617,7 @@ function taskHTML(t) {
   return `<div class="task-item p-${pr} ${done?"done":""}">
     ${isManager()?`<span class="task-check" style="cursor:default;background:#f1f5fb;color:var(--navy)">${(t.progres&&t.progres.done)||0}</span>`:`<button class="task-check" data-toggle="${t.id}" ${(!canMark && !(t.mine&&t.mine.selesai))?"disabled":""}>✓</button>`}
     <div class="task-body"><div class="task-title clickable" data-taskdetail="${t.id}">${esc(t.judul)}</div>
-      <div class="task-meta"><span class="tag mk">${esc(t.matkul||"Umum")}</span>${tipeBadge}${jkBadge}
+      <div class="task-meta"><span class="tag mk">${esc(t.matkul||"Umum")}</span>${tipeBadge}${jkBadge}${done?`<span class="tag green">✅ Selesai</span>`:""}
         <span class="due ${dl.urgent&&!done?"urgent":""}">🕑 ${t.deadline?fmtTanggal(t.deadline)+" • ":""}${dl.txt}</span></div>
       ${t.deskripsi?`<div class="task-meta"><span>📝 ${esc(t.deskripsi)}</span></div>`:""}
       ${dosenNama?`<div class="task-meta"><span>👨‍🏫 Dosen: ${esc(dosenNama)}</span></div>`:""}

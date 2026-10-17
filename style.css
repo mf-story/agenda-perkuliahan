@@ -194,6 +194,7 @@ body {
 .flag.batal { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
 .flag.moved { background: #fff1e0; color: #b45309; border-color: #fcd9a8; }
 .flag.moved-in { background: #dcfce7; color: #15803d; border-color: #a7e3bd; }
+.flag.selesai { background: #dcfce7; color: #166534; border-color: #a7e3bd; }
 .mcard.is-moved-out { opacity: .72; border-left-style: dashed; }
 .mcard.is-moved-out .mcard-title { text-decoration: line-through; text-decoration-color: rgba(180,83,9,.5); }
 .mcard.is-batal { border-left-color: var(--red); opacity: .9; }
