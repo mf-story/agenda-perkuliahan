@@ -33,7 +33,7 @@ if (webpush) {
   try {
     if (fs.existsSync(VAPID_FILE)) VAPID = JSON.parse(fs.readFileSync(VAPID_FILE, "utf8"));
     else { VAPID = webpush.generateVAPIDKeys(); fs.writeFileSync(VAPID_FILE, JSON.stringify(VAPID)); }
-    webpush.setVapidDetails("mailto:admin@mf-story.online", VAPID.publicKey, VAPID.privateKey);
+    webpush.setVapidDetails("mailto:admin@unismuh.online", VAPID.publicKey, VAPID.privateKey);
   } catch (e) { console.warn("VAPID gagal diinisialisasi:", e.message); VAPID = null; }
 }
 
